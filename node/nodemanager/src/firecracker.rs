@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
+use log::debug;
 use uuid::Uuid;
 
 pub struct JailedCracker {
@@ -15,6 +16,7 @@ pub struct JailedCracker {
 impl JailedCracker {
     pub fn new(jailer_bin: &Path, firecracker_bin: &Path, uid_offset: u16) -> Self {
         let uuid = Uuid::new_v4().to_string();
+        debug!("Starting jailed firecracker with id {}", uuid);
 
         let mut cmd = Command::new(jailer_bin);
         cmd.env_clear();
@@ -32,6 +34,9 @@ impl JailedCracker {
             )
             .join(&uuid)
             .join("root");
+
+        //Mkdirs
+        std::fs::create_dir_all(&root_path).expect("Unable to create rootfs directory");
 
         Self {
             root_path,
@@ -53,9 +58,12 @@ impl JailedCracker {
     pub fn set_rootfs(&self, path: &Path) -> Result<()> {
         let dest = self.root_path.join("root.fs");
         //TODO: Support not copying by default...
+        debug!("Copying rootfs from {:?} to {:?}", path, dest);
         std::fs::copy(path, &dest)?;
+        debug!("Chowning rootfs to {}", self.uid);
         std::os::unix::fs::chown(&dest, Some(self.uid), Some(self.uid))?;
 
+        debug!("Putting rootfs in firecracker");
         self.request(
             "PUT",
             "/drives/rootfs",
@@ -63,18 +71,20 @@ impl JailedCracker {
             \"drive_id\": \"rootfs\",
             \"path_on_host\": \"/root.fs\",
             \"is_root_device\": true,
-            \"is_read_only\": false}",
+            \"is_read_only\": true}",
         )
         .map(|_| ())
     }
 
     pub fn set_boot(&self, kernel_img: &Path) -> Result<()> {
         let dest = self.root_path.join("kernel.img");
-
         //TODO: Mount this?
+        debug!("Copying kernel from {:?} to {:?}", kernel_img, dest);
         std::fs::copy(kernel_img, &dest)?;
+        debug!("Chowning kernel to {}", self.uid);
         std::os::unix::fs::chown(&dest, Some(self.uid), Some(self.uid))?;
 
+        debug!("Setting boot source to kernel.img in firecracker");
         self.request(
             "PUT",
             "/boot-source",

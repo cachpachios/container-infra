@@ -1,0 +1,6 @@
+{
+    "firecracker_binary": "/opt/nodeadmin/firecracker-v1.11.0-x86_64",
+    "jailer_binary": "/opt/nodeadmin/jailer-v1.11.0-x86_64",
+    "kernel_image": "/opt/nodeadmin/vmlinux-6.1.102",
+    "rootfs": "/opt/nodeadmin/rootfs.ext4"
+}
