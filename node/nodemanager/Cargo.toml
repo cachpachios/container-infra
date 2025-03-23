@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.97"
+uuid = { version = "1.16.0", features = ["v4"] }
