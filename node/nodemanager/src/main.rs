@@ -27,8 +27,10 @@ fn main() {
     vm.set_boot(kernel).expect("Unable to set boot source");
     vm.set_rootfs(rootfs).expect("Unable to set rootfs");
 
-    println!("Starting VM");
+    println!("Starting VM and sleeping for 3s");
     vm.start_vm().expect("Unable to start VM");
-    std::thread::sleep(std::time::Duration::from_secs(20));
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    println!("Forcefully stopping VM and cleaning up!");
     vm.cleanup();
+    println!("Exiting...");
 }
