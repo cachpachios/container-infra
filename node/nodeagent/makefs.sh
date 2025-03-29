@@ -21,7 +21,7 @@ mkdir target/nodeagent_tmp_rootfs
 echo Mounting the rootfs
 sudo mount target/rootfs.ext4 target/nodeagent_tmp_rootfs
 
-sudo mkdir -p target/nodeagent_tmp_rootfs/{sbin,dev,proc,sys,mnt}
+sudo mkdir -p target/nodeagent_tmp_rootfs/{sbin,dev,proc,run,sys,bin,mnt}
 echo Coping the static init to the rootfs
 # DEBUG!!!
 sudo cp target/x86_64-unknown-linux-musl/debug/nodeagent target/nodeagent_tmp_rootfs/sbin/init
@@ -34,6 +34,16 @@ if [ ! -f target/busybox ]; then
 fi
 sudo cp target/busybox target/nodeagent_tmp_rootfs/sbin/busybox
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/busybox
+
+# crun from https://github.com/containers/crun/releases/download/1.21/crun-1.21-linux-amd64
+# Download crun if not present
+
+if [ ! -f target/crun ]; then
+    echo Downloading crun
+    wget -O target/crun https://github.com/containers/crun/releases/download/1.21/crun-1.21-linux-amd64
+fi
+sudo cp target/crun target/nodeagent_tmp_rootfs/bin/crun
+sudo chmod +x target/nodeagent_tmp_rootfs/bin/crun
 
 echo Unmounting the rootfs
 sudo umount target/nodeagent_tmp_rootfs
