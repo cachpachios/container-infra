@@ -25,6 +25,7 @@ impl JailedCracker {
         let uid: u32 = 10000 + uid_offset as u32;
         cmd.arg("--uid").arg(uid.to_string());
         cmd.arg("--gid").arg(uid.to_string());
+        // cmd.stdin(std::process::Stdio::null());
 
         let root_path = Path::new("/srv/jailer/")
             .join(
@@ -53,6 +54,10 @@ impl JailedCracker {
 
     pub fn root_path(&self) -> &Path {
         &self.root_path
+    }
+
+    pub fn wait(&mut self) {
+        let _ = self.proc.wait();
     }
 
     pub fn set_rootfs(&self, path: &Path) -> Result<()> {

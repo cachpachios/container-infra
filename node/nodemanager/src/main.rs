@@ -22,15 +22,13 @@ fn main() {
     let jailer_bin = Path::new(&config.jailer_binary);
     let firecracker_bin = Path::new(&config.firecracker_binary);
 
-    let vm = firecracker::JailedCracker::new(jailer_bin, firecracker_bin, 0);
+    let mut vm = firecracker::JailedCracker::new(jailer_bin, firecracker_bin, 0);
 
     vm.set_boot(kernel).expect("Unable to set boot source");
     vm.set_rootfs(rootfs).expect("Unable to set rootfs");
 
-    println!("Starting VM and sleeping for 3s");
     vm.start_vm().expect("Unable to start VM");
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    println!("Forcefully stopping VM and cleaning up!");
+
+    vm.wait();
     vm.cleanup();
-    println!("Exiting...");
 }

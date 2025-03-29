@@ -1,11 +1,22 @@
 use std::time::Duration;
 
-fn main() {
-    println!("Hello world!");
-    println!("This is NodeAgent, built statically and running hopefully inside a VM.");
+use log::error;
 
-    loop {
-        std::thread::sleep(Duration::from_secs(1));
-        println!("We are still running, but doing nothing... zzz");
-    }
+mod init;
+mod sh;
+
+fn main() {
+    simple_logger::init_with_level(if cfg!(debug_assertions) {
+        log::Level::Debug
+    } else {
+        log::Level::Info
+    })
+    .expect("Failed to initialize logger");
+
+    log::info!("Running v. {}", env!("CARGO_PKG_VERSION"));
+
+    init::init();
+
+    log::info!("Going into shell...");
+    sh::cmd(&["sh"]);
 }

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.97"
+ctrlc = "3.4.5"
 env_logger = "0.11.7"
 log = "0.4.26"
 serde = { version = "1.0.219", features = ["derive"] }
