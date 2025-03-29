@@ -5,7 +5,6 @@ pub fn init() {
     cmd(&["mount", "-t", "proc", "proc", "/proc"]);
     log::debug!("Mounting /sys");
     cmd(&["mount", "-t", "sysfs", "sysfs", "/sys"]);
-    // Mount /run
     log::debug!("Mounting /run");
     cmd(&["mount", "-t", "tmpfs", "tmpfs", "/run"]);
 
