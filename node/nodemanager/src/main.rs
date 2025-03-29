@@ -26,6 +26,8 @@ fn main() {
 
     vm.set_boot(kernel).expect("Unable to set boot source");
     vm.set_rootfs(rootfs).expect("Unable to set rootfs");
+    vm.create_drive(10, "drive0")
+        .expect("Unable to create drive");
 
     vm.start_vm().expect("Unable to start VM");
 

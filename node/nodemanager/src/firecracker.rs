@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::{Child, Command},
 };
@@ -79,6 +80,30 @@ impl JailedCracker {
             \"is_read_only\": true}",
         )
         .map(|_| ())
+    }
+
+    pub fn create_drive(&self, size_gb: u64, drive_id: &str) -> Result<()> {
+        let fp = self.root_path.join(format!("{}.fs", drive_id));
+        debug!("Creating drive {} with size {}GB", drive_id, size_gb);
+        let f = fs::File::create(&fp)?;
+        f.set_len(size_gb * 1024 * 1024 * 1024)?;
+        debug!("Chowning drive to {}", self.uid);
+        std::os::unix::fs::chown(&fp, Some(self.uid), Some(self.uid))?;
+
+        debug!("Putting rootfs in firecracker");
+        self.request(
+            "PUT",
+            format!("/drives/{}", drive_id).as_str(),
+            format!(
+                "{{
+            \"drive_id\": \"{}\",
+            \"path_on_host\": \"/{}.fs\",
+            \"is_root_device\": false,
+            \"is_read_only\": false}}",
+                drive_id, drive_id
+            )
+            .as_str(),
+        )
     }
 
     pub fn set_boot(&self, kernel_img: &Path) -> Result<()> {
