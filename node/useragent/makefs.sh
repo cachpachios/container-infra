@@ -35,6 +35,10 @@ fi
 sudo cp target/busybox target/nodeagent_tmp_rootfs/sbin/busybox
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/busybox
 
+sudo ln -s /sbin/busybox target/nodeagent_tmp_rootfs/bin/busybox
+
+sudo chroot target/nodeagent_tmp_rootfs /sbin/busybox --install -s /bin
+
 # crun from https://github.com/containers/crun/releases/download/1.21/crun-1.21-linux-amd64
 # Download crun if not present
 
