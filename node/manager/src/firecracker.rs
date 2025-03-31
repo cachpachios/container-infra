@@ -8,7 +8,10 @@ use anyhow::Result;
 use log::debug;
 use uuid::Uuid;
 
+use crate::networking::TunTap;
+
 pub struct JailedCracker {
+    uuid: String,
     root_path: PathBuf,
     proc: Child,
     uid: u32,
@@ -41,6 +44,7 @@ impl JailedCracker {
         std::fs::create_dir_all(&root_path).expect("Unable to create rootfs directory");
 
         Self {
+            uuid,
             root_path,
             proc: cmd.spawn().expect("Unable to start jailer"),
             uid,
@@ -106,7 +110,24 @@ impl JailedCracker {
         )
     }
 
-    pub fn set_boot(&self, kernel_img: &Path) -> Result<()> {
+    pub fn set_eth_tap(&self, tap: &TunTap) -> Result<()> {
+        self.add_network_interface("eth0", &tap.name)?;
+        Ok(())
+    }
+
+    pub fn add_network_interface(&self, guest_name: &str, host_dev_name: &str) -> Result<()> {
+        self.request(
+            "PUT",
+            format!("/network-interfaces/{}", guest_name).as_str(),
+            format!(
+                "{{\"iface_id\": \"{}\", \"host_dev_name\": \"{}\"}}",
+                guest_name, host_dev_name
+            )
+            .as_str(),
+        )
+    }
+
+    pub fn set_boot(&self, kernel_img: &Path, boot_args: &str) -> Result<()> {
         let dest = self.root_path.join("kernel.img");
         //TODO: Mount this?
         debug!("Copying kernel from {:?} to {:?}", kernel_img, dest);
@@ -118,7 +139,11 @@ impl JailedCracker {
         self.request(
             "PUT",
             "/boot-source",
-            "{\"kernel_image_path\": \"/kernel.img\", \"boot_args\": \"console=ttyS0 reboot=k panic=1 pci=off\"}"
+            format!(
+                "{{\"kernel_image_path\": \"/kernel.img\", \"boot_args\": \"{}\"}}",
+                boot_args
+            )
+            .as_str(),
         )
     }
 

@@ -12,7 +12,7 @@ echo Static init built! Generating rootfs
 rm -f target/rootfs.ext4 || true
 
 echo Creating the rootfs
-truncate -s 32M target/rootfs.ext4
+truncate -s 128M target/rootfs.ext4
 sudo mkfs.ext4 target/rootfs.ext4
 
 rm -rf target/nodeagent_tmp_rootfs || true
