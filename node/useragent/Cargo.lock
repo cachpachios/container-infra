@@ -687,6 +687,7 @@ name = "nodeagent"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "libc",
  "log",
  "oci-spec",
  "reqwest",

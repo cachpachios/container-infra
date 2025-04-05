@@ -1,12 +1,14 @@
 use std::path::Path;
 
-use oci_spec::image::{Arch, ImageConfiguration, ImageManifest, MediaType, Os};
+use oci_spec::image::{Arch, Descriptor, ImageConfiguration, ImageManifest, MediaType, Os};
+use oci_spec::runtime::{ProcessBuilder, Spec, SpecBuilder, UserBuilder};
+use oci_spec::OciSpecError;
 use oci_spec::{distribution::Reference, image::ImageIndex};
 use reqwest::blocking::Client;
 use serde::Deserialize;
 
 #[derive(Debug)]
-pub enum ImageErrors {
+pub enum RegistryErrors {
     BadlyFormattedReferenceString,
     NetworkError,
     NoCompatibleImageAvailable,
@@ -14,14 +16,10 @@ pub enum ImageErrors {
     IOErr(&'static str),
 }
 
-pub fn pull_extract_image(
-    output_folder: &Path,
-    reference: &str,
+pub fn get_manifest_and_config(
+    reference: &Reference,
     auth_token: Option<&str>,
-) -> Result<(ImageManifest, ImageConfiguration), ImageErrors> {
-    let reference =
-        Reference::try_from(reference).map_err(|_| ImageErrors::BadlyFormattedReferenceString)?;
-
+) -> Result<(ImageManifest, ImageConfiguration), RegistryErrors> {
     let index_url = format!(
         "https://{}/v2/{}/manifests/{}",
         reference.resolve_registry(),
@@ -41,7 +39,7 @@ pub fn pull_extract_image(
                 *p.architecture() == Arch::Amd64 && *p.os() == Os::Linux
             })
         })
-        .ok_or(ImageErrors::NoCompatibleImageAvailable)?;
+        .ok_or(RegistryErrors::NoCompatibleImageAvailable)?;
 
     let manifest_url = format!(
         "https://{}/v2/{}/manifests/{}",
@@ -51,13 +49,7 @@ pub fn pull_extract_image(
     );
 
     let manifest: ImageManifest = ImageManifest::from_reader(get(&manifest_url, auth_token)?)
-        .map_err(|_| ImageErrors::UnableToParse)?;
-
-    log::info!(
-        "Pulled manifest: {} for {}",
-        compatible_manifest.digest(),
-        reference.repository()
-    );
+        .map_err(|_| RegistryErrors::UnableToParse)?;
 
     let config_url = format!(
         "https://{}/v2/{}/blobs/{}",
@@ -67,41 +59,33 @@ pub fn pull_extract_image(
     );
     let config_resp = get(&config_url, auth_token)?;
     let config: ImageConfiguration =
-        ImageConfiguration::from_reader(config_resp).map_err(|_| ImageErrors::UnableToParse)?;
-    log::info!(
-        "Pulled config: {} for {}",
-        manifest.config().digest(),
-        reference.repository()
-    );
-
-    for (i, layer) in manifest.layers().iter().enumerate() {
-        log::info!(
-            "Downloading and extracting {} ({}/{}): {} (Size: {} bytes)",
-            layer.as_digest_sha256().unwrap_or("?"),
-            i + 1,
-            manifest.layers().len(),
-            layer.digest(),
-            layer.size()
-        );
-        let blob_url = format!(
-            "https://{}/v2/{}/blobs/{}",
-            reference.resolve_registry(),
-            reference.repository(),
-            layer.digest()
-        );
-
-        let mut blob_resp = get(&blob_url, auth_token).map_err(|_| ImageErrors::NetworkError)?;
-        extract_layer(&mut blob_resp, &output_folder, layer.media_type())?;
-    }
+        ImageConfiguration::from_reader(config_resp).map_err(|_| RegistryErrors::UnableToParse)?;
 
     Ok((manifest, config))
+}
+
+pub fn pull_and_extract_layer(
+    reference: &Reference,
+    layer: &Descriptor,
+    output_folder: &Path,
+    auth_token: Option<&str>,
+) -> Result<(), RegistryErrors> {
+    let blob_url = format!(
+        "https://{}/v2/{}/blobs/{}",
+        reference.resolve_registry(),
+        reference.repository(),
+        layer.digest()
+    );
+
+    let mut blob_resp = get(&blob_url, auth_token).map_err(|_| RegistryErrors::NetworkError)?;
+    extract_layer(&mut blob_resp, &output_folder, layer.media_type())
 }
 
 fn extract_layer(
     blob: &mut impl std::io::Read,
     output_folder: &Path,
     media_type: &MediaType,
-) -> Result<(), ImageErrors> {
+) -> Result<(), RegistryErrors> {
     let reader = match media_type {
         MediaType::ImageLayerGzip => {
             let reader = flate2::read::GzDecoder::new(blob);
@@ -113,7 +97,7 @@ fn extract_layer(
         }
         MediaType::ImageLayer => Box::new(blob) as Box<dyn std::io::Read>,
         _ => {
-            return Err(ImageErrors::IOErr(
+            return Err(RegistryErrors::IOErr(
                 "Unsupported media type for layer in manifest.",
             ))
         }
@@ -122,7 +106,7 @@ fn extract_layer(
     let mut tar = tar::Archive::new(reader);
     tar.set_overwrite(true);
     tar.unpack(output_folder)
-        .map_err(|_| ImageErrors::IOErr("Unable to extract layer."))?;
+        .map_err(|_| RegistryErrors::IOErr("Unable to extract layer."))?;
     Ok(())
 }
 
@@ -148,11 +132,30 @@ pub fn docker_io_oauth(
     Ok(resp.token)
 }
 
-fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Response, ImageErrors> {
+fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Response, RegistryErrors> {
     let client = Client::new();
     let mut request = client.get(url);
     if let Some(token) = auth_token {
         request = request.bearer_auth(token);
     }
-    request.send().map_err(|_| ImageErrors::NetworkError)
+    request.send().map_err(|_| RegistryErrors::NetworkError)
+}
+
+pub fn create_runtime_spec(config: ImageConfiguration) -> Result<Spec, OciSpecError> {
+    if config.config().is_none() {
+        return Ok(Spec::default());
+    }
+    let config = config.config().as_ref().unwrap();
+    let spec = SpecBuilder::default();
+
+    let mut process = ProcessBuilder::default();
+    if let Some(args) = config.cmd() {
+        process = process.args(args.clone());
+    }
+
+    if let Some(env) = config.env() {
+        process = process.env(env.clone());
+    }
+
+    spec.process(process.build()?).hostname("node-xxx").build()
 }

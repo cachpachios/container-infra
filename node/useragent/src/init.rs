@@ -7,6 +7,12 @@ pub fn init() {
     cmd(&["mount", "-t", "sysfs", "sysfs", "/sys"]);
     log::debug!("Mounting /run");
     cmd(&["mount", "-t", "tmpfs", "tmpfs", "/run"]);
+    log::debug!("Mounting /var/run");
+    cmd(&["mount", "-t", "tmpfs", "tmpfs", "/var/run"]);
+
+    log::debug!("Creating and mounting /dev/pts");
+    cmd(&["mkdir", "-p", "/dev/pts"]);
+    cmd(&["mount", "-t", "devpts", "devpts", "/dev/pts"]);
 
     // Mount cgroup2
     log::debug!("Mounting /sys/fs/cgroup");

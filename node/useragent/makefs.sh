@@ -22,6 +22,8 @@ echo Mounting the rootfs
 sudo mount target/rootfs.ext4 target/nodeagent_tmp_rootfs
 
 sudo mkdir -p target/nodeagent_tmp_rootfs/{sbin,dev,proc,run,sys,bin,etc,mnt}
+sudo mkdir -p target/nodeagent_tmp_rootfs/dev/pts
+sudo mkdir -p target/nodeagent_tmp_rootfs/var/run
 echo Coping the static init to the rootfs
 # DEBUG!!!
 sudo cp target/x86_64-unknown-linux-musl/debug/nodeagent target/nodeagent_tmp_rootfs/sbin/init
