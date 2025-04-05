@@ -12,8 +12,8 @@ mod init;
 mod sh;
 
 fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
-    let resource_name = "library/python";
-    let reference = Reference::try_from("python:3.10-slim").expect("Unable to parse reference");
+    let resource_name = "library/ubuntu";
+    let reference = Reference::try_from("ubuntu:24.04").expect("Unable to parse reference");
 
     let auth = containers::registry::docker_io_oauth("repository", &resource_name, &["pull"])
         .map_err(|_| containers::registry::RegistryErrors::AuthenticationError)?;
@@ -57,7 +57,13 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
         })??;
     }
 
-    let spec = containers::rt::create_runtime_spec(config).expect("Unable to create runtime spec");
+    let overrides = containers::rt::RuntimeOverrides {
+        args: None,
+        terminal: true,
+    };
+
+    let spec = containers::rt::create_runtime_spec(&config, &overrides)
+        .expect("Unable to create runtime spec");
 
     spec.save(&folder.join("config.json"))
         .expect("Unable to save runtime spec");
