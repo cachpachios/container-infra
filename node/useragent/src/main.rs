@@ -1,14 +1,84 @@
 use std::{
     fs::OpenOptions,
     os::fd::AsRawFd,
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
-use oci_spec::image;
+use oci_spec::distribution::Reference;
 
 mod containers;
 mod init;
 mod sh;
+
+fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
+    let resource_name = "library/python";
+    let reference = Reference::try_from("python:3.10-slim").expect("Unable to parse reference");
+
+    let auth = containers::registry::docker_io_oauth("repository", &resource_name, &["pull"])
+        .map_err(|_| containers::registry::RegistryErrors::AuthenticationError)?;
+    let folder = PathBuf::from("/mnt");
+
+    let (manifest, config) =
+        containers::registry::get_manifest_and_config(&reference, Some(&auth))?;
+
+    let layers_folder = folder.join("layers");
+    std::fs::create_dir_all(&layers_folder).map_err(|_| {
+        containers::registry::RegistryErrors::IOErr("Unable to create layers folder")
+    })?;
+
+    let layer_count = manifest.layers().len();
+    let mut layer_threads = Vec::with_capacity(layer_count);
+
+    let mut layer_folders = Vec::with_capacity(layer_count);
+
+    for layer in manifest.layers().iter() {
+        let layer = layer.clone();
+        let reference = reference.clone();
+        let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
+        layer_folders.push(folder.clone());
+
+        let auth = auth.clone();
+
+        // Spawn a thread to pull the layer
+        let jh = std::thread::spawn(move || {
+            std::fs::create_dir_all(&folder).map_err(|_| {
+                containers::registry::RegistryErrors::IOErr("Unable to create layer folder")
+            })?;
+            containers::registry::pull_and_extract_layer(&reference, &layer, &folder, Some(&auth))
+        });
+        layer_threads.push(jh);
+    }
+
+    // Wait for all threads to finish
+    for jh in layer_threads {
+        jh.join().map_err(|_| {
+            containers::registry::RegistryErrors::IOErr("Unable to join thread for layer")
+        })??;
+    }
+
+    let spec = containers::rt::create_runtime_spec(config).expect("Unable to create runtime spec");
+
+    spec.save(&folder.join("config.json"))
+        .expect("Unable to save runtime spec");
+
+    manifest
+        .to_file_pretty(&folder.join("manifest.json"))
+        .expect("Unable to save manifest");
+
+    // Create the overlay filesystem
+    let merged_path = folder.join("rootfs");
+    let work_path = folder.join("work");
+    std::fs::create_dir_all(&merged_path).map_err(|_| {
+        containers::registry::RegistryErrors::IOErr("Unable to create merged folder")
+    })?;
+    std::fs::create_dir_all(&work_path)
+        .map_err(|_| containers::registry::RegistryErrors::IOErr("Unable to create work folder"))?;
+
+    containers::fs::create_overlay_fs(&merged_path, &work_path, &layer_folders);
+
+    Ok(())
+}
 
 fn main() {
     simple_logger::init_with_level(if cfg!(debug_assertions) {
@@ -20,66 +90,35 @@ fn main() {
 
     log::info!("Running v. {}", env!("CARGO_PKG_VERSION"));
 
-    let folder;
-    // Skip init if env var NODEAGENT_DONT_INIT is set
-    if std::env::var("NODEAGENT_DEBUG").is_err() {
-        init::init();
-        folder = std::path::PathBuf::from("/mnt");
-    } else {
-        log::info!("Skipping initialization");
-        folder = std::env::current_dir().expect("Unable to get current directory");
-    }
+    init::init();
 
-    // let resource_name = "library/ubuntu";
-    // let reference = "ubuntu:24.04";
-    // let auth = containers::docker_io_oauth("repository", &resource_name, &["pull"])
-    //     .expect("Unable to auth.");
-
-    // let root_folder = folder.join("rootfs");
-
-    // let (manifest, config) =
-    //     match containers::pull_extract_image(&root_folder, reference, Some(&auth)) {
-    //         Ok(res) => {
-    //             log::info!("Image pulled and extracted successfully.");
-    //             res
-    //         }
-    //         Err(e) => {
-    //             log::error!("Error pulling image: {:?}", e);
-    //             log::error!("Droping into shell");
-    //             sh::cmd(&["sh"]);
-    //             std::process::exit(0);
-    //         }
-    //     };
-
-    // let spec = containers::create_runtime_spec(config).expect("Unable to create runtime spec");
-
-    // spec.save(&folder.join("config.json"))
-    //     .expect("Unable to save runtime spec");
-
-    log::info!("Droping into shell");
-    unsafe {
-        if libc::setsid() == -1 {
-            eprintln!("setsid failed");
+    loop {
+        let r = pull_image();
+        match r {
+            Ok(_) => {
+                log::info!("Image pulled successfully.");
+                break;
+            }
+            Err(e) => {
+                log::error!("Error pulling image: {:?}", e);
+                log::error!("Retrying in 5 seconds...");
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
         }
     }
 
+    log::info!("Droping into shell");
     let tty = OpenOptions::new()
         .read(true)
         .write(true)
         .open("/dev/ttyS0")
         .expect("Unable to open tty");
 
-    // Set it as controlling terminal
-    unsafe {
-        libc::ioctl(tty.as_raw_fd(), libc::TIOCSCTTY, 0);
-    }
-
     // Clone for stdin, stdout, stderr
     let tty_in = tty.try_clone().expect("Unable to clone tty for stdin");
     let tty_out = tty.try_clone().expect("Unable to clone tty for stdout");
     let tty_err = tty.try_clone().expect("Unable to clone tty for stderr");
 
-    // Spawn a shell with the tty as stdio
     Command::new("/bin/sh")
         .stdin(Stdio::from(tty_in))
         .stdout(Stdio::from(tty_out))

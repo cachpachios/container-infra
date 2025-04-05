@@ -13,6 +13,7 @@ pub enum RegistryErrors {
     NetworkError,
     NoCompatibleImageAvailable,
     UnableToParse,
+    AuthenticationError,
     IOErr(&'static str),
 }
 
@@ -139,23 +140,4 @@ fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Respons
         request = request.bearer_auth(token);
     }
     request.send().map_err(|_| RegistryErrors::NetworkError)
-}
-
-pub fn create_runtime_spec(config: ImageConfiguration) -> Result<Spec, OciSpecError> {
-    if config.config().is_none() {
-        return Ok(Spec::default());
-    }
-    let config = config.config().as_ref().unwrap();
-    let spec = SpecBuilder::default();
-
-    let mut process = ProcessBuilder::default();
-    if let Some(args) = config.cmd() {
-        process = process.args(args.clone());
-    }
-
-    if let Some(env) = config.env() {
-        process = process.env(env.clone());
-    }
-
-    spec.process(process.build()?).hostname("node-xxx").build()
 }

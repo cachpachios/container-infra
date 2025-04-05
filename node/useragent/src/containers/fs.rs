@@ -1,23 +1,24 @@
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
-pub enum FSErrors {
-    IOErr(&'static str),
-}
-struct ContainerFS {
-    root_folder: PathBuf, // Root folder of the container
-    layer_folder: PathBuf,
-    download_folder: PathBuf, // Used to extract images etc to before move to the layer folder when done
-}
+use crate::sh::cmd;
 
-pub fn prepare_filesystem(root_folder: &Path) -> Result<(), FSErrors> {
-    let layer_folder = root_folder.join("layers");
-    if !layer_folder.exists() {
-        std::fs::create_dir(&layer_folder)
-            .map_err(|_| FSErrors::IOErr("Unable to create layers folder"))?;
-    }
-
-    let rootfs = root_folder.join("rootfs");
-
-    Ok(())
+pub fn create_overlay_fs<T: AsRef<Path>>(merged_path: T, work_path: T, layers: &Vec<PathBuf>) {
+    cmd(&[
+        "mount",
+        "-t",
+        "overlay",
+        "overlay",
+        "-o",
+        &format!(
+            "lowerdir={},upperdir={},workdir={}",
+            layers
+                .iter()
+                .map(|layer| layer.to_str().unwrap())
+                .collect::<Vec<&str>>()
+                .join(":"),
+            merged_path.as_ref().to_str().unwrap(),
+            work_path.as_ref().to_str().unwrap()
+        ),
+        merged_path.as_ref().to_str().unwrap(),
+    ]);
 }

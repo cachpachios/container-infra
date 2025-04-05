@@ -24,4 +24,13 @@ pub fn init() {
 
     log::debug!("Mounting /dev/vdb");
     cmd(&["mount", "/dev/vdb", "/mnt"]);
+
+    // Setting session id
+    log::debug!("Setting session id");
+    let session_id: i32 = unsafe { libc::setsid() };
+    if session_id < 0 {
+        log::error!("Unable to set session id: {}", session_id);
+    } else {
+        log::debug!("Session id set to: {}", session_id);
+    }
 }
