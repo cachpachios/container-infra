@@ -147,6 +147,18 @@ impl JailedCracker {
         )
     }
 
+    pub fn set_machine_config(&self, vcpu_count: u8, mem_size_mb: u32) -> Result<()> {
+        self.request(
+            "PUT",
+            "/machine-config",
+            format!(
+                "{{\"vcpu_count\": {}, \"mem_size_mib\": {}}}",
+                vcpu_count, mem_size_mb
+            )
+            .as_str(),
+        )
+    }
+
     pub fn start_vm(&self) -> Result<()> {
         self.request("PUT", "/actions", "{ \"action_type\": \"InstanceStart\" }")
     }

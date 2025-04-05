@@ -113,7 +113,7 @@ fn main() {
         }
     }
 
-    log::info!("Droping into shell");
+    log::info!("Running container...");
     let tty = OpenOptions::new()
         .read(true)
         .write(true)
@@ -125,12 +125,15 @@ fn main() {
     let tty_out = tty.try_clone().expect("Unable to clone tty for stdout");
     let tty_err = tty.try_clone().expect("Unable to clone tty for stderr");
 
-    Command::new("/bin/sh")
+    Command::new("/bin/crun")
+        .arg("run")
+        .arg("container")
+        .current_dir("/mnt")
         .stdin(Stdio::from(tty_in))
         .stdout(Stdio::from(tty_out))
         .stderr(Stdio::from(tty_err))
         .spawn()
-        .expect("Failed to spawn shell")
+        .expect("Failed to spawn container")
         .wait()
-        .expect("Unable to wait for shell to exit."); // wait for shell to exit
+        .expect("Unable to wait for container to exit.");
 }

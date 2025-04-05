@@ -24,7 +24,8 @@ fn main() {
     let firecracker_bin = Path::new(&config.firecracker_binary);
 
     let mut vm = firecracker::JailedCracker::new(jailer_bin, firecracker_bin, 0);
-
+    vm.set_machine_config(4u8, 1024u32)
+        .expect("Unable to set machine config");
     vm.set_boot(
         kernel,
         "console=ttyS0 reboot=k panic=1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",
