@@ -15,6 +15,8 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
     let resource_name = "library/ubuntu";
     let reference = Reference::try_from("ubuntu:24.04").expect("Unable to parse reference");
 
+    log::info!("Pulling container image: {}", reference);
+
     let auth = containers::registry::docker_io_oauth("repository", &resource_name, &["pull"])
         .map_err(|_| containers::registry::RegistryErrors::AuthenticationError)?;
     let folder = PathBuf::from("/mnt");
@@ -84,6 +86,8 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
     containers::fs::create_overlay_fs(&merged_path, &work_path, &layer_folders);
     containers::fs::prepare_fs(&merged_path);
 
+    log::info!("Image pulled and extracted successfully.");
+
     Ok(())
 }
 
@@ -103,7 +107,6 @@ fn main() {
         let r = pull_image();
         match r {
             Ok(_) => {
-                log::info!("Image pulled successfully.");
                 break;
             }
             Err(e) => {

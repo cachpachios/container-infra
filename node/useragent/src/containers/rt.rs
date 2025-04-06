@@ -21,7 +21,7 @@ const DEFAULT_CAPS: &[Capability] = &[
     Capability::NetRaw,
     Capability::Setfcap,
     Capability::Setgid,
-    Capability::Setpcap,
+    Capability::Setfcap,
     Capability::Setuid,
     Capability::SysChroot,
 ];

@@ -5,7 +5,7 @@ set -e
 # Change to the directory of the script
 cd "$(dirname "$0")"
 
-cargo build --target=x86_64-unknown-linux-musl $@
+cargo build --target=x86_64-unknown-linux-musl --release
 
 echo Static init built! Generating rootfs
 
@@ -26,7 +26,7 @@ sudo mkdir -p target/nodeagent_tmp_rootfs/dev/pts
 sudo mkdir -p target/nodeagent_tmp_rootfs/var/run
 echo Coping the static init to the rootfs
 # DEBUG!!!
-sudo cp target/x86_64-unknown-linux-musl/debug/nodeagent target/nodeagent_tmp_rootfs/sbin/init
+sudo cp target/x86_64-unknown-linux-musl/release/nodeagent target/nodeagent_tmp_rootfs/sbin/init
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/init
 
 # If busybox is not at target/busybox, download it
