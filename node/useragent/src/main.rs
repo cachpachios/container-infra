@@ -82,6 +82,7 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
         .map_err(|_| containers::registry::RegistryErrors::IOErr("Unable to create work folder"))?;
 
     containers::fs::create_overlay_fs(&merged_path, &work_path, &layer_folders);
+    containers::fs::prepare_fs(&merged_path);
 
     Ok(())
 }

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use oci_spec::{
     image::ImageConfiguration,
     runtime::{
-        Capability, LinuxBuilder, LinuxCapabilitiesBuilder, LinuxIdMappingBuilder, LinuxNamespace,
+        Capability, LinuxBuilder, LinuxCapabilitiesBuilder, LinuxIdMappingBuilder,
         LinuxNamespaceBuilder, LinuxNamespaceType, ProcessBuilder, RootBuilder, Spec, SpecBuilder,
     },
     OciSpecError,
@@ -30,7 +30,7 @@ const DEFAULT_NAMESPACES: &[LinuxNamespaceType] = &[
     LinuxNamespaceType::User,
     LinuxNamespaceType::Mount,
     LinuxNamespaceType::Pid,
-    // LinuxNamespaceType::Network,
+    // LinuxNamespaceType::Network, // We don't want an isolated network namespace. Similar to K8s the whole VM acts as a pod.
     LinuxNamespaceType::Ipc,
     LinuxNamespaceType::Uts,
 ];
@@ -70,9 +70,13 @@ pub fn create_runtime_spec(
         args = vec!["/bin/sh".to_string()];
     }
 
-    let env = config.env().clone().unwrap_or_else(|| {
+    let mut env = config.env().clone().unwrap_or_else(|| {
         vec!["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()]
     });
+
+    if overrides.terminal {
+        env.push("TERM=xterm".to_string());
+    }
 
     let default_caps = DEFAULT_CAPS.iter().cloned().collect::<HashSet<_>>();
 

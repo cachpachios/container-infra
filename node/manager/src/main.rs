@@ -28,7 +28,7 @@ fn main() {
         .expect("Unable to set machine config");
     vm.set_boot(
         kernel,
-        "console=ttyS0 reboot=k panic=1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",
+        "console=ttyS0 reboot=k panic=-1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",
     )
     .expect("Unable to set boot source");
     vm.set_rootfs(rootfs).expect("Unable to set rootfs");
