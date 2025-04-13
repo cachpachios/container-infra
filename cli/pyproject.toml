@@ -1,0 +1,9 @@
+[project]
+name = "infra-cli"
+version = "0.1.0"
+description = "Infrastucture and DevOps made ez"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11.3",
+]
