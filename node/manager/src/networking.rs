@@ -44,7 +44,3 @@ impl Drop for TunTap {
         let _ = cmd("ip", &["link", "del", &self.name]);
     }
 }
-
-pub struct NFTTable {
-    name: String,
-}
