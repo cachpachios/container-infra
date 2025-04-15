@@ -1,5 +1,23 @@
 use crate::sh::cmd;
 
+fn mke2fs(args: &[&str]) {
+    let output = std::process::Command::new("/sbin/mke2fs")
+        .args(args)
+        .spawn()
+        .expect("Failed to start command");
+
+    // Wait for the command to finish
+    let output = output
+        .wait_with_output()
+        .expect("Failed to wait on command");
+
+    if !output.status.success() {
+        log::error!("Command failed with status: {}", output.status);
+    } else {
+        log::debug!("Command succeeded: {}", output.status);
+    }
+}
+
 pub fn init() {
     log::debug!("Mounting /proc");
     cmd(&["mount", "-t", "proc", "proc", "/proc"]);
@@ -20,7 +38,7 @@ pub fn init() {
 
     // Creating R/W fs in /mnt
     log::debug!("Creating FS in /dev/vdb");
-    cmd(&["mkfs.ext2", "/dev/vdb"]);
+    mke2fs(&["-t", "ext4", "-O", "^has_journal", "/dev/vdb"]);
 
     log::debug!("Mounting /dev/vdb");
     cmd(&["mount", "/dev/vdb", "/mnt"]);

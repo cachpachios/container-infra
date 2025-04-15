@@ -25,7 +25,7 @@ sudo mkdir -p target/nodeagent_tmp_rootfs/{sbin,dev,proc,run,sys,bin,etc,mnt}
 sudo mkdir -p target/nodeagent_tmp_rootfs/dev/pts
 sudo mkdir -p target/nodeagent_tmp_rootfs/var/run
 echo Coping the static init to the rootfs
-# DEBUG!!!
+
 sudo cp target/x86_64-unknown-linux-musl/release/nodeagent target/nodeagent_tmp_rootfs/sbin/init
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/init
 
@@ -40,6 +40,10 @@ sudo chmod +x target/nodeagent_tmp_rootfs/sbin/busybox
 sudo ln -s /sbin/busybox target/nodeagent_tmp_rootfs/bin/busybox
 
 sudo chroot target/nodeagent_tmp_rootfs /sbin/busybox --install -s /bin
+
+# Copy mkefs to the rootfs
+sudo cp /sbin/mke2fs target/nodeagent_tmp_rootfs/sbin/mke2fs
+sudo chmod +x target/nodeagent_tmp_rootfs/sbin/mke2fs
 
 # crun from https://github.com/containers/crun/releases/download/1.21/crun-1.21-linux-amd64
 # Download crun if not present
