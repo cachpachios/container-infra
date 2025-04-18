@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
+    process::{Child, ChildStdout, Command, Stdio},
 };
 
 use anyhow::{Context, Result};
@@ -17,15 +17,13 @@ pub struct JailedCracker {
     uid: u32,
 }
 
-type Output = (ChildStdout, ChildStderr);
-
 impl JailedCracker {
     pub fn spawn(
         jailer_bin: &Path,
         firecracker_bin: &Path,
         uid_offset: u16,
-    ) -> Result<(Self, Output)> {
-        let uuid = Uuid::new_v4().to_string();
+    ) -> Result<(Self, ChildStdout)> {
+        let uuid: String = Uuid::new_v4().to_string();
         debug!("Starting jailed firecracker with id {}", uuid);
 
         let mut cmd = Command::new(jailer_bin);
@@ -35,8 +33,12 @@ impl JailedCracker {
         let uid: u32 = 10000 + uid_offset as u32;
         cmd.arg("--uid").arg(uid.to_string());
         cmd.arg("--gid").arg(uid.to_string());
+
+        cmd.arg("--");
+        cmd.arg("--level").arg("error");
+
         cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        cmd.stderr(Stdio::null());
         // cmd.stdin(Stdio::null());
 
         let fc_bin = firecracker_bin
@@ -58,9 +60,6 @@ impl JailedCracker {
         let stdout = cmd.stdout.take().ok_or(anyhow::Error::msg(
             "Unable to get stdout from jailer process",
         ))?;
-        let stderr = cmd.stderr.take().ok_or(anyhow::Error::msg(
-            "Unable to get stderr from jailer process",
-        ))?;
 
         Ok((
             Self {
@@ -69,7 +68,7 @@ impl JailedCracker {
                 proc: cmd,
                 uid,
             },
-            (stdout, stderr),
+            (stdout),
         ))
     }
 
