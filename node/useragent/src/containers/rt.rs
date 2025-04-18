@@ -27,12 +27,13 @@ const DEFAULT_CAPS: &[Capability] = &[
 ];
 
 const DEFAULT_NAMESPACES: &[LinuxNamespaceType] = &[
-    LinuxNamespaceType::User,
+    // LinuxNamespaceType::User, //TODO: Enable this when network ns is enabled
     LinuxNamespaceType::Mount,
     LinuxNamespaceType::Pid,
-    // LinuxNamespaceType::Network, // We don't want an isolated network namespace. Similar to K8s the whole VM acts as a pod.
+    // LinuxNamespaceType::Network, // TODO: Enable this and route correctly...
     LinuxNamespaceType::Ipc,
     LinuxNamespaceType::Uts,
+    LinuxNamespaceType::Cgroup,
 ];
 
 #[derive(Debug, Default)]

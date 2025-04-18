@@ -39,6 +39,7 @@ pub fn create_overlay_fs<T: AsRef<Path>>(merged_path: T, work_path: T, layers: &
             "lowerdir={},upperdir={},workdir={}",
             layers
                 .iter()
+                .rev()
                 .map(|layer| layer.to_str().unwrap())
                 .collect::<Vec<&str>>()
                 .join(":"),

@@ -24,10 +24,8 @@ pub fn get_manifest_and_config(
         reference.repository(),
         reference.tag().unwrap_or("latest"),
     );
-
-    let index: ImageIndex = get(&index_url, auth_token)?
-        .json()
-        .expect("Cant parse index!");
+    let req = get(&index_url, auth_token)?;
+    let index: ImageIndex = req.json().map_err(|_| RegistryErrors::UnableToParse)?;
 
     let compatible_manifest = index
         .manifests()
@@ -132,5 +130,15 @@ fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Respons
     if let Some(token) = auth_token {
         request = request.bearer_auth(token);
     }
-    request.send().map_err(|_| RegistryErrors::NetworkError)
+    let resp = request.send().map_err(|_| RegistryErrors::NetworkError)?;
+    if resp.status().is_success() {
+        Ok(resp)
+    } else {
+        log::error!(
+            "Repository GET failed: {} - {}",
+            resp.status(),
+            resp.text().unwrap_or_default()
+        );
+        Err(RegistryErrors::NetworkError)
+    }
 }

@@ -75,6 +75,19 @@ touch target/resolv.conf
 echo "nameserver 8.8.8.8" > target/resolv.conf
 sudo mv target/resolv.conf target/nodeagent_tmp_rootfs/etc/resolv.conf
 
+touch target/nsswitch.conf
+echo "passwd: files" > target/nsswitch.conf
+echo "group: files" >> target/nsswitch.conf
+sudo mv target/nsswitch.conf target/nodeagent_tmp_rootfs/etc/nsswitch.conf
+
+touch target/passwd
+echo "root:x:0:0:root:/root:/bin/sh" > target/passwd
+sudo mv target/passwd target/nodeagent_tmp_rootfs/etc/passwd
+
+touch target/group
+echo "root:x:0:" > target/group
+sudo mv target/group target/nodeagent_tmp_rootfs/etc/group
+
 echo Unmounting the rootfs
 sudo umount target/nodeagent_tmp_rootfs
 rm -rf target/nodeagent_tmp_rootfs

@@ -12,13 +12,14 @@ mod init;
 mod sh;
 
 fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
-    let resource_name = "library/ubuntu";
-    let reference = Reference::try_from("ubuntu:24.04").expect("Unable to parse reference");
+    let reference = Reference::try_from("nginx:latest").expect("Unable to parse reference");
 
-    log::info!("Pulling container image: {}", reference);
+    log::info!("Pulling container image: {}", reference.whole(),);
 
-    let auth = containers::registry::docker_io_oauth("repository", &resource_name, &["pull"])
-        .map_err(|_| containers::registry::RegistryErrors::AuthenticationError)?;
+    let auth =
+        containers::registry::docker_io_oauth("repository", &reference.repository(), &["pull"])
+            .map_err(|_| containers::registry::RegistryErrors::AuthenticationError)?;
+
     let folder = PathBuf::from("/mnt");
 
     let (manifest, config) =
@@ -33,7 +34,13 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
 
     let mut layer_folders = Vec::with_capacity(layer_count);
 
-    for layer in manifest.layers().iter() {
+    for (i, layer) in manifest.layers().iter().enumerate() {
+        log::info!(
+            "Pulling layer {} of {} - {}",
+            i + 1,
+            layer_count,
+            layer.digest()
+        );
         let layer = layer.clone();
         let reference = reference.clone();
         let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
@@ -45,7 +52,19 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
         let jh = std::thread::spawn(move || {
             std::fs::create_dir_all(&folder)
                 .map_err(|_| containers::registry::RegistryErrors::IOErr)?;
-            containers::registry::pull_and_extract_layer(&reference, &layer, &folder, Some(&auth))
+            let r = containers::registry::pull_and_extract_layer(
+                &reference,
+                &layer,
+                &folder,
+                Some(&auth),
+            );
+            log::info!(
+                "Pulled layer {} of {} - {}",
+                i + 1,
+                layer_count,
+                layer.digest()
+            );
+            r
         });
         layer_threads.push(jh);
     }
@@ -57,9 +76,13 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
     }
 
     let overrides = containers::rt::RuntimeOverrides {
-        args: None,
+        args: None, //Some(vec!["/bin/sh".to_string()]),
         terminal: true,
     };
+
+    config
+        .to_file(&folder.join("image_config.json"))
+        .expect("Unable to save config");
 
     let spec = containers::rt::create_runtime_spec(&config, &overrides)
         .expect("Unable to create runtime spec");
