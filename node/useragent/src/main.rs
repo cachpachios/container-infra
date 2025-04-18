@@ -25,9 +25,8 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
         containers::registry::get_manifest_and_config(&reference, Some(&auth))?;
 
     let layers_folder = folder.join("layers");
-    std::fs::create_dir_all(&layers_folder).map_err(|_| {
-        containers::registry::RegistryErrors::IOErr("Unable to create layers folder")
-    })?;
+    std::fs::create_dir_all(&layers_folder)
+        .map_err(|_| containers::registry::RegistryErrors::IOErr)?;
 
     let layer_count = manifest.layers().len();
     let mut layer_threads = Vec::with_capacity(layer_count);
@@ -44,9 +43,8 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
 
         // Spawn a thread to pull the layer
         let jh = std::thread::spawn(move || {
-            std::fs::create_dir_all(&folder).map_err(|_| {
-                containers::registry::RegistryErrors::IOErr("Unable to create layer folder")
-            })?;
+            std::fs::create_dir_all(&folder)
+                .map_err(|_| containers::registry::RegistryErrors::IOErr)?;
             containers::registry::pull_and_extract_layer(&reference, &layer, &folder, Some(&auth))
         });
         layer_threads.push(jh);
@@ -54,9 +52,8 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
 
     // Wait for all threads to finish
     for jh in layer_threads {
-        jh.join().map_err(|_| {
-            containers::registry::RegistryErrors::IOErr("Unable to join thread for layer")
-        })??;
+        jh.join()
+            .map_err(|_| containers::registry::RegistryErrors::IOErr)??;
     }
 
     let overrides = containers::rt::RuntimeOverrides {
@@ -77,14 +74,12 @@ fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
     // Create the overlay filesystem
     let merged_path = folder.join("rootfs");
     let work_path = folder.join("work");
-    std::fs::create_dir_all(&merged_path).map_err(|_| {
-        containers::registry::RegistryErrors::IOErr("Unable to create merged folder")
-    })?;
-    std::fs::create_dir_all(&work_path)
-        .map_err(|_| containers::registry::RegistryErrors::IOErr("Unable to create work folder"))?;
+    std::fs::create_dir_all(&merged_path)
+        .map_err(|_| containers::registry::RegistryErrors::IOErr)?;
+    std::fs::create_dir_all(&work_path).map_err(|_| containers::registry::RegistryErrors::IOErr)?;
 
     containers::fs::create_overlay_fs(&merged_path, &work_path, &layer_folders);
-    containers::fs::prepare_fs(&merged_path);
+    containers::fs::prepare_fs(&merged_path).expect("Unable to prepare filesystem");
 
     log::info!("Image pulled and extracted successfully.");
 

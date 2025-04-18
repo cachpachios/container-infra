@@ -7,12 +7,11 @@ use serde::Deserialize;
 
 #[derive(Debug)]
 pub enum RegistryErrors {
-    BadlyFormattedReferenceString,
     NetworkError,
     NoCompatibleImageAvailable,
     UnableToParse,
     AuthenticationError,
-    IOErr(&'static str),
+    IOErr,
 }
 
 pub fn get_manifest_and_config(
@@ -95,17 +94,13 @@ fn extract_layer(
             Box::new(reader) as Box<dyn std::io::Read>
         }
         MediaType::ImageLayer => Box::new(blob) as Box<dyn std::io::Read>,
-        _ => {
-            return Err(RegistryErrors::IOErr(
-                "Unsupported media type for layer in manifest.",
-            ))
-        }
+        _ => return Err(RegistryErrors::IOErr),
     };
 
     let mut tar = tar::Archive::new(reader);
     tar.set_overwrite(true);
     tar.unpack(output_folder)
-        .map_err(|_| RegistryErrors::IOErr("Unable to extract layer."))?;
+        .map_err(|_| RegistryErrors::IOErr)?;
     Ok(())
 }
 
