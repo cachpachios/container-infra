@@ -130,10 +130,7 @@ fn main() {
         .expect("Unable to wait for container to exit.");
 
     log::info!("Container exited, shutting down...");
-    loop {
-        unsafe {
-            reboot(libc::LINUX_REBOOT_CMD_POWER_OFF);
-        };
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    unsafe {
+        reboot(libc::LINUX_REBOOT_CMD_RESTART);
+    };
 }
