@@ -1,10 +1,10 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Child, Command},
+    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::debug;
 use uuid::Uuid;
 
@@ -17,8 +17,14 @@ pub struct JailedCracker {
     uid: u32,
 }
 
+type Output = (ChildStdout, ChildStderr);
+
 impl JailedCracker {
-    pub fn new(jailer_bin: &Path, firecracker_bin: &Path, uid_offset: u16) -> Self {
+    pub fn spawn(
+        jailer_bin: &Path,
+        firecracker_bin: &Path,
+        uid_offset: u16,
+    ) -> Result<(Self, Output)> {
         let uuid = Uuid::new_v4().to_string();
         debug!("Starting jailed firecracker with id {}", uuid);
 
@@ -29,32 +35,48 @@ impl JailedCracker {
         let uid: u32 = 10000 + uid_offset as u32;
         cmd.arg("--uid").arg(uid.to_string());
         cmd.arg("--gid").arg(uid.to_string());
-        // cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        // cmd.stdin(Stdio::null());
 
+        let fc_bin = firecracker_bin
+            .file_name()
+            .ok_or(anyhow::Error::msg("Unable to get firecracker binary name"))?;
         let root_path = Path::new("/srv/jailer/")
-            .join(
-                firecracker_bin
-                    .file_name()
-                    .expect("Firecracker bin has no file stem"),
-            )
+            .join(fc_bin)
             .join(&uuid)
             .join("root");
 
         //Mkdirs
-        std::fs::create_dir_all(&root_path).expect("Unable to create rootfs directory");
+        std::fs::create_dir_all(&root_path).context(format!(
+            "Unable to create jailer root path {}",
+            root_path.display()
+        ))?;
 
-        Self {
-            uuid,
-            root_path,
-            proc: cmd.spawn().expect("Unable to start jailer"),
-            uid,
-        }
+        let mut cmd = cmd.spawn()?;
+
+        let stdout = cmd.stdout.take().ok_or(anyhow::Error::msg(
+            "Unable to get stdout from jailer process",
+        ))?;
+        let stderr = cmd.stderr.take().ok_or(anyhow::Error::msg(
+            "Unable to get stderr from jailer process",
+        ))?;
+
+        Ok((
+            Self {
+                uuid,
+                root_path,
+                proc: cmd,
+                uid,
+            },
+            (stdout, stderr),
+        ))
     }
 
-    pub fn cleanup(mut self) {
+    pub fn cleanup(mut self) -> Result<()> {
         let _ = self.proc.kill();
-        std::fs::remove_dir_all(&self.root_path.parent().unwrap())
-            .expect("Unable to cleanup rootfs");
+        std::fs::remove_dir_all(&self.root_path.parent().unwrap())?;
+        Ok(())
     }
 
     pub fn root_path(&self) -> &Path {

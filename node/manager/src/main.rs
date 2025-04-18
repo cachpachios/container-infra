@@ -1,5 +1,8 @@
 use serde::Deserialize;
-use std::path::Path;
+use std::{
+    io::{Read, Write},
+    path::Path,
+};
 
 mod firecracker;
 mod networking;
@@ -23,7 +26,8 @@ fn main() {
     let jailer_bin = Path::new(&config.jailer_binary);
     let firecracker_bin = Path::new(&config.firecracker_binary);
 
-    let mut vm = firecracker::JailedCracker::new(jailer_bin, firecracker_bin, 0);
+    let (mut vm, out) = firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0)
+        .expect("Unable to spawn firecracker");
     vm.set_machine_config(4u8, 1024u32)
         .expect("Unable to set machine config");
     vm.set_boot(
@@ -83,6 +87,40 @@ fn main() {
 
     vm.start_vm().expect("Unable to start VM");
 
+    let (mut stdout, mut stderr) = out;
+    std::thread::spawn(move || {
+        let mut our = std::io::stdout();
+        loop {
+            let mut buf = [0; 1024];
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    our.write_all(&buf[..n]).expect("Unable to write to stdout");
+                }
+                Err(e) => {
+                    break;
+                }
+            }
+        }
+    });
+
+    std::thread::spawn(move || {
+        let mut our = std::io::stderr();
+        loop {
+            let mut buf = [0; 1024];
+            match stderr.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    our.write_all(&buf[..n]).expect("Unable to write to stdout");
+                }
+                Err(e) => {
+                    break;
+                }
+            }
+        }
+    });
+
     vm.wait();
-    vm.cleanup();
+
+    vm.cleanup().expect("Cleanup failed");
 }
