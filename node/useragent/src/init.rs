@@ -3,8 +3,11 @@ use crate::sh::cmd;
 fn mke2fs(args: &[&str]) {
     let output = std::process::Command::new("/sbin/mke2fs")
         .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
         .spawn()
-        .expect("Failed to start command");
+        .expect("Failed to start mke2fs");
 
     // Wait for the command to finish
     let output = output

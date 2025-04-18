@@ -1,10 +1,10 @@
 use std::{
     fs::OpenOptions,
-    os::fd::AsRawFd,
     path::PathBuf,
     process::{Command, Stdio},
 };
 
+use libc::reboot;
 use oci_spec::distribution::Reference;
 
 mod containers;
@@ -99,23 +99,11 @@ fn main() {
     })
     .expect("Failed to initialize logger");
 
-    log::info!("Running v. {}", env!("CARGO_PKG_VERSION"));
+    log::info!("Running NodeAgent v. {}", env!("CARGO_PKG_VERSION"));
 
     init::init();
 
-    loop {
-        let r = pull_image();
-        match r {
-            Ok(_) => {
-                break;
-            }
-            Err(e) => {
-                log::error!("Error pulling image: {:?}", e);
-                log::error!("Retrying in 5 seconds...");
-                std::thread::sleep(std::time::Duration::from_secs(5));
-            }
-        }
-    }
+    pull_image().expect("Unable to pull image");
 
     log::info!("Running container...");
     let tty = OpenOptions::new()
@@ -140,4 +128,12 @@ fn main() {
         .expect("Failed to spawn container")
         .wait()
         .expect("Unable to wait for container to exit.");
+
+    log::info!("Container exited, shutting down...");
+    loop {
+        unsafe {
+            reboot(libc::LINUX_REBOOT_CMD_POWER_OFF);
+        };
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
