@@ -26,8 +26,16 @@ fn main() {
     let jailer_bin = Path::new(&config.jailer_binary);
     let firecracker_bin = Path::new(&config.firecracker_binary);
 
-    let (mut vm, mut out) = firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0)
-        .expect("Unable to spawn firecracker");
+    let metadata = "{
+        \"stuff\": {
+            \"version\": \"0.1\",
+            \"description\": \"We are inside!\"
+        }
+    }";
+
+    let (mut vm, mut out) =
+        firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0, Some(metadata))
+            .expect("Unable to spawn firecracker");
     vm.set_machine_config(4u8, 1024u32)
         .expect("Unable to set machine config");
     vm.set_boot(
@@ -88,15 +96,15 @@ fn main() {
     vm.start_vm().expect("Unable to start VM");
 
     std::thread::spawn(move || {
+        let mut buf = [0; 1024];
         let mut our = std::io::stdout();
         loop {
-            let mut buf = [0; 1024];
             match out.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
                     our.write_all(&buf[..n]).expect("Unable to write to stdout");
                 }
-                Err(e) => {
+                Err(_) => {
                     break;
                 }
             }

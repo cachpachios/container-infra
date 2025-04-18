@@ -22,6 +22,7 @@ impl JailedCracker {
         jailer_bin: &Path,
         firecracker_bin: &Path,
         uid_offset: u16,
+        mmds_json: Option<&str>,
     ) -> Result<(Self, ChildStdout)> {
         let uuid: String = Uuid::new_v4().to_string();
         debug!("Starting jailed firecracker with id {}", uuid);
@@ -54,6 +55,11 @@ impl JailedCracker {
             "Unable to create jailer root path {}",
             root_path.display()
         ))?;
+
+        if let Some(mmds_json) = mmds_json {
+            std::fs::write(&root_path.join("metadata.json"), mmds_json)?;
+            cmd.arg("--metadata").arg("metadata.json");
+        }
 
         let mut cmd = cmd.spawn()?;
 
@@ -133,6 +139,7 @@ impl JailedCracker {
 
     pub fn set_eth_tap(&self, tap: &TunTap) -> Result<()> {
         self.add_network_interface("eth0", &tap.name)?;
+        self.config_mmds("eth0")?;
         Ok(())
     }
 
@@ -143,6 +150,18 @@ impl JailedCracker {
             format!(
                 "{{\"iface_id\": \"{}\", \"host_dev_name\": \"{}\"}}",
                 guest_name, host_dev_name
+            )
+            .as_str(),
+        )
+    }
+
+    pub fn config_mmds(&self, guest_name: &str) -> Result<()> {
+        self.request(
+            "PUT",
+            "/mmds/config",
+            format!(
+                "{{\"network_interfaces\": [\"{}\"], \"version\": \"V2\"}}",
+                guest_name
             )
             .as_str(),
         )
