@@ -5,7 +5,18 @@ set -e
 # Change to the directory of the script
 cd "$(dirname "$0")"
 
-cargo build --target=x86_64-unknown-linux-musl --release
+SHOULD_BUILD_DEBUG="false"
+if [ "$1" = "--debug" ]; then
+    SHOULD_BUILD_DEBUG="true"
+fi
+
+if [ "$SHOULD_BUILD_DEBUG" = "true" ]; then
+    echo Building debug version
+    cargo build --target=x86_64-unknown-linux-musl
+else
+    echo Building release version
+    cargo build --target=x86_64-unknown-linux-musl --release
+fi
 
 # If busybox is not at target/busybox, download it
 if [ ! -f target/busybox ]; then
@@ -55,7 +66,13 @@ sudo mkdir -p target/nodeagent_tmp_rootfs/dev/pts
 sudo mkdir -p target/nodeagent_tmp_rootfs/var/run
 echo Coping the static init to the rootfs
 
-sudo cp target/x86_64-unknown-linux-musl/release/nodeagent target/nodeagent_tmp_rootfs/sbin/init
+if [ "$SHOULD_BUILD_DEBUG" = "true" ]; then
+    echo Copying debug version of nodeagent
+    sudo cp target/x86_64-unknown-linux-musl/debug/nodeagent target/nodeagent_tmp_rootfs/sbin/init
+else
+    echo Copying release version of nodeagent
+    sudo cp target/x86_64-unknown-linux-musl/release/nodeagent target/nodeagent_tmp_rootfs/sbin/init
+fi
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/init
 
 sudo cp target/busybox target/nodeagent_tmp_rootfs/sbin/busybox

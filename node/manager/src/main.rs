@@ -29,7 +29,7 @@ fn main() {
 
     let metadata = "{
         \"latest\": {
-            \"container\": {\"image\": \"nginx:latest\"}
+            \"container\": {\"image\": \"asdasd:latest\"}
         }
     }";
 

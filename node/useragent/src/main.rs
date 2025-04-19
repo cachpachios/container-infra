@@ -1,5 +1,6 @@
 use std::{
     fs::OpenOptions,
+    panic::PanicHookInfo,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -109,6 +110,8 @@ fn pull_image(reference: Reference) -> Result<(), containers::registry::Registry
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(panic));
+
     simple_logger::init_with_level(if cfg!(debug_assertions) {
         log::Level::Debug
     } else {
@@ -146,7 +149,7 @@ fn main() {
     let tty_out = tty.try_clone().expect("Unable to clone tty for stdout");
     let tty_err = tty.try_clone().expect("Unable to clone tty for stderr");
 
-    Command::new("/bin/crun")
+    let out = Command::new("/bin/crun")
         .arg("run")
         .arg("container")
         .current_dir("/mnt")
@@ -155,11 +158,31 @@ fn main() {
         .stderr(Stdio::from(tty_err))
         .spawn()
         .expect("Failed to spawn container")
-        .wait()
+        .wait_with_output()
         .expect("Unable to wait for container to exit.");
 
-    log::info!("Container exited, shutting down...");
+    log::info!("Container exited with code {}.", out.status);
+    shutdown();
+}
+
+fn shutdown() {
     unsafe {
         reboot(libc::LINUX_REBOOT_CMD_RESTART);
     };
+}
+
+/// Panic handler
+fn panic(info: &PanicHookInfo) {
+    log::error!("Critical error occured during execution.");
+    log::debug!("Panic: {}", info);
+    log::debug!(
+        "Panic location: {:?}",
+        info.location().unwrap_or(&std::panic::Location::caller())
+    );
+    log::debug!(
+        "Panic backtrace: {:?}",
+        std::backtrace::Backtrace::force_capture()
+    );
+    log::debug!("Shutting down node...");
+    shutdown();
 }
