@@ -2,7 +2,7 @@ use std::{char::from_u32, time::SystemTime};
 
 use serde::de::DeserializeOwned;
 
-const BASE_URL: &str = "http://169.254.169.254";
+const MMDS_IP_ADDR: &str = "169.254.169.254";
 
 pub struct MMDSClient {
     client: reqwest::blocking::Client,
@@ -13,8 +13,7 @@ pub struct MMDSClient {
 #[derive(Debug)]
 pub enum MMDSClientError {
     RequestError,
-    UnableToParseResponse,
-    ResponseSchemaError,
+    ResponseSchemaParseError,
 }
 
 impl MMDSClient {
@@ -38,7 +37,7 @@ impl MMDSClient {
             let token_expiry = SystemTime::now() + std::time::Duration::from_secs(expiry_seconds);
             let resp = self
                 .client
-                .put(format!("{}/latest/api/token", BASE_URL))
+                .put(format!("http://{}/latest/api/token", MMDS_IP_ADDR))
                 .header("X-metadata-token-ttl-seconds", expiry_seconds)
                 .send()
                 .map_err(|_| MMDSClientError::RequestError)?;
@@ -53,7 +52,7 @@ impl MMDSClient {
             let token = resp.text().map_err(|_| MMDSClientError::RequestError)?;
             if token.is_empty() {
                 log::debug!("MMDS token is empty");
-                return Err(MMDSClientError::ResponseSchemaError);
+                return Err(MMDSClientError::ResponseSchemaParseError);
             }
             self.token = token.trim().to_string();
             log::debug!("Rotated MMDS token: \"{}\"", self.token);
@@ -65,7 +64,7 @@ impl MMDSClient {
     pub fn get<T: DeserializeOwned>(&self, resource_path: &str) -> Result<T, MMDSClientError> {
         let resp = self
             .client
-            .get(format!("{}{}", BASE_URL, resource_path))
+            .get(format!("http://{}{}", MMDS_IP_ADDR, resource_path))
             .header("X-metadata-token", &self.token)
             .header("Accept", "application/json")
             .send()
@@ -80,7 +79,7 @@ impl MMDSClient {
         }
         let out: T = resp
             .json()
-            .map_err(|_| MMDSClientError::ResponseSchemaError)?;
+            .map_err(|_| MMDSClientError::ResponseSchemaParseError)?;
         Ok(out)
     }
 }
