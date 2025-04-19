@@ -16,7 +16,8 @@ struct Config {
     rootfs: String,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
 
     let config = std::fs::read_to_string("config.json").expect("Unable to read config file");
@@ -29,7 +30,7 @@ fn main() {
 
     let metadata = "{
         \"latest\": {
-            \"container\": {\"image\": \"asdasd:latest\"}
+            \"container\": {\"image\": \"nginx:latest\"}
         }
     }";
 
