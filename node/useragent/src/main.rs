@@ -9,11 +9,10 @@ use oci_spec::distribution::Reference;
 
 mod containers;
 mod init;
+mod mmds;
 mod sh;
 
-fn pull_image() -> Result<(), containers::registry::RegistryErrors> {
-    let reference = Reference::try_from("nginx:latest").expect("Unable to parse reference");
-
+fn pull_image(reference: Reference) -> Result<(), containers::registry::RegistryErrors> {
     log::info!("Pulling container image: {}", reference.whole(),);
 
     let auth =
@@ -121,7 +120,19 @@ fn main() {
 
     init::init();
 
-    pull_image().expect("Unable to pull image");
+    let mmds = mmds::MMDSClient::connect().expect("Unable to connect to MMDS");
+
+    #[derive(serde::Deserialize)]
+    struct ContainerConfig {
+        image: String,
+    }
+
+    let container_config: ContainerConfig = mmds
+        .get("/latest/container")
+        .expect("Unable to get container config");
+    let reference = Reference::try_from(container_config.image).expect("Unable to parse reference");
+
+    pull_image(reference).expect("Unable to pull image");
 
     log::info!("Running container...");
     let tty = OpenOptions::new()

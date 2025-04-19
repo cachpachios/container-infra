@@ -40,7 +40,7 @@ impl JailedCracker {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
-        // cmd.stdin(Stdio::null());
+        cmd.stdin(Stdio::null());
 
         let fc_bin = firecracker_bin
             .file_name()

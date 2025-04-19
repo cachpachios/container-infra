@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::{
     io::{Read, Write},
     path::Path,
+    thread::sleep,
 };
 
 mod firecracker;
@@ -27,15 +28,30 @@ fn main() {
     let firecracker_bin = Path::new(&config.firecracker_binary);
 
     let metadata = "{
-        \"stuff\": {
-            \"version\": \"0.1\",
-            \"description\": \"We are inside!\"
+        \"latest\": {
+            \"container\": {\"image\": \"nginx:latest\"}
         }
     }";
 
     let (mut vm, mut out) =
         firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0, Some(metadata))
             .expect("Unable to spawn firecracker");
+    std::thread::spawn(move || {
+        let mut buf = [0; 1024];
+        let mut our = std::io::stdout();
+        loop {
+            match out.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    our.write_all(&buf[..n]).expect("Unable to write to stdout");
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+    });
+
     vm.set_machine_config(4u8, 1024u32)
         .expect("Unable to set machine config");
     vm.set_boot(
@@ -94,23 +110,6 @@ fn main() {
     .expect("Unable to add iptables rule");
 
     vm.start_vm().expect("Unable to start VM");
-
-    std::thread::spawn(move || {
-        let mut buf = [0; 1024];
-        let mut our = std::io::stdout();
-        loop {
-            match out.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    our.write_all(&buf[..n]).expect("Unable to write to stdout");
-                }
-                Err(_) => {
-                    break;
-                }
-            }
-        }
-    });
-
     vm.wait();
 
     vm.cleanup().expect("Cleanup failed");
