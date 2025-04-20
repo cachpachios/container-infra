@@ -1,10 +1,11 @@
 use futures_lite::io::AsyncReadExt;
-use log::info;
 use serde::Deserialize;
 use std::{io::Write, path::Path};
 
-mod firecracker;
-mod networking;
+mod machine;
+
+use machine::firecracker;
+use machine::networking;
 
 #[derive(Deserialize)]
 struct Config {
