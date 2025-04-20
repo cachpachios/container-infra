@@ -2,7 +2,6 @@ use serde::Deserialize;
 use std::{
     io::{Read, Write},
     path::Path,
-    thread::sleep,
 };
 
 mod firecracker;
@@ -36,6 +35,7 @@ async fn main() {
 
     let (mut vm, mut out) =
         firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0, Some(metadata))
+            .await
             .expect("Unable to spawn firecracker");
     std::thread::spawn(move || {
         let mut buf = [0; 1024];
@@ -54,14 +54,17 @@ async fn main() {
     });
 
     vm.set_machine_config(4u8, 1024u32)
+        .await
         .expect("Unable to set machine config");
     vm.set_boot(
         kernel,
         "console=ttyS0 quiet loglevel=1 reboot=k panic=-1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",
     )
+    .await
     .expect("Unable to set boot source");
-    vm.set_rootfs(rootfs).expect("Unable to set rootfs");
+    vm.set_rootfs(rootfs).await.expect("Unable to set rootfs");
     vm.create_drive(10, "drive0")
+        .await
         .expect("Unable to create drive");
 
     let tap = networking::TunTap::new("tap0").expect("Unable to create tap device");
@@ -69,7 +72,9 @@ async fn main() {
         .expect("Unable to add address to tap device");
     tap.up().expect("Unable to bring up tap device");
 
-    vm.set_eth_tap(&tap).expect("Unable to add tap device");
+    vm.set_eth_tap(&tap)
+        .await
+        .expect("Unable to add tap device");
 
     let ours = "eno1";
 
@@ -110,7 +115,7 @@ async fn main() {
     )
     .expect("Unable to add iptables rule");
 
-    vm.start_vm().expect("Unable to start VM");
+    vm.start_vm().await.expect("Unable to start VM");
     vm.wait();
 
     vm.cleanup().expect("Cleanup failed");
