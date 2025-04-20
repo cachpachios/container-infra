@@ -1,8 +1,7 @@
+use futures_lite::io::AsyncReadExt;
+use log::info;
 use serde::Deserialize;
-use std::{
-    io::{Read, Write},
-    path::Path,
-};
+use std::{io::Write, path::Path};
 
 mod firecracker;
 mod networking;
@@ -37,21 +36,6 @@ async fn main() {
         firecracker::JailedCracker::spawn(jailer_bin, firecracker_bin, 0, Some(metadata))
             .await
             .expect("Unable to spawn firecracker");
-    std::thread::spawn(move || {
-        let mut buf = [0; 1024];
-        let mut our = std::io::stdout();
-        loop {
-            match out.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    our.write_all(&buf[..n]).expect("Unable to write to stdout");
-                }
-                Err(_) => {
-                    break;
-                }
-            }
-        }
-    });
 
     vm.set_machine_config(4u8, 1024u32)
         .await
@@ -116,7 +100,23 @@ async fn main() {
     .expect("Unable to add iptables rule");
 
     vm.start_vm().await.expect("Unable to start VM");
-    vm.wait();
+
+    let mut buf = [0; 1024];
+    let mut our = std::io::stdout();
+    loop {
+        match out.read(&mut buf).await {
+            Ok(0) => {
+                println!("Firecracker process exited.");
+                break;
+            }
+            Ok(n) => {
+                our.write_all(&buf[..n]).expect("Unable to write to stderr");
+            }
+            Err(_) => {
+                break;
+            }
+        }
+    }
 
     vm.cleanup().expect("Cleanup failed");
 }

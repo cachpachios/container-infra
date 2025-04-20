@@ -1,10 +1,10 @@
 use std::{
-    fs,
     path::{Path, PathBuf},
-    process::{Child, ChildStdout, Command, Stdio},
+    process::Stdio,
 };
 
 use anyhow::{anyhow, Context, Result};
+use async_process::{Child, ChildStdout, Command};
 use http_client_unix_domain_socket::{ClientUnix, Method};
 use log::debug;
 use serde::Serialize;
@@ -174,10 +174,6 @@ impl JailedCracker {
         &self.root_path
     }
 
-    pub fn wait(&mut self) {
-        let _ = self.proc.wait();
-    }
-
     pub async fn set_rootfs(&mut self, path: &Path) -> Result<()> {
         let dest = self.root_path.join("root.fs");
         debug!("Copying rootfs from {:?} to {:?}", path, dest);
@@ -200,7 +196,7 @@ impl JailedCracker {
     pub async fn create_drive(&mut self, size_gb: u64, drive_id: &str) -> Result<()> {
         let fp = self.root_path.join(format!("{}.fs", drive_id));
         debug!("Creating drive {} with size {}GB", drive_id, size_gb);
-        let f = fs::File::create(&fp)?;
+        let f = std::fs::File::create(&fp)?;
         f.set_len(size_gb * 1024 * 1024 * 1024)?;
         debug!("Chowning drive to {}", self.uid);
         std::os::unix::fs::chown(&fp, Some(self.uid), Some(self.uid))?;
