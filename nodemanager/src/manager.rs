@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use log::info;
+use log::warn;
 use proto::node::node_manager_server::NodeManager as NodeManagerService;
 use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceServer;
 use proto::node::Empty;
@@ -66,7 +67,6 @@ impl NodeManagerService for NodeManager {
 
     async fn deprovision(&self, request: Request<InstanceId>) -> Result<Response<Empty>, Status> {
         let request = request.into_inner();
-        info!("Deprovisioning node with id {}", &request.id);
 
         let machine;
         {
@@ -75,10 +75,15 @@ impl NodeManagerService for NodeManager {
         }
 
         if let Some(machine) = machine {
+            info!("Deprovisioning node with id {}", &request.id);
             let mut machine = machine.lock().await;
             machine.shutdown().await;
             Ok(Response::new(Empty {}))
         } else {
+            warn!(
+                "Requested deprovisioning of missing machine with id {}",
+                &request.id
+            );
             Err(Status::not_found("Machine not found"))
         }
     }
@@ -87,6 +92,8 @@ impl NodeManagerService for NodeManager {
 pub async fn run_server(manager: NodeManager) -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
     let server = NodeManagerServiceServer::new(manager);
+
+    info!("NodeManager server listening on {}", addr);
 
     tonic::transport::Server::builder()
         .add_service(server)

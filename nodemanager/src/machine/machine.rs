@@ -140,12 +140,16 @@ impl Machine {
     pub async fn shutdown(&mut self) {
         let _ = self.vm.request_stop().await;
 
-        const MAX_WAIT: Duration = Duration::from_secs(1);
+        const MAX_WAIT: Duration = Duration::from_secs(3);
 
         if let Some(jh) = self.join_handle.take() {
             let e = tokio::time::timeout(MAX_WAIT, jh).await;
             if let Err(_) = e {
-                log::warn!("Timeout waiting to shutdown VM, killing it");
+                log::warn!(
+                    "Timeout {}s waiting to shutdown VM {}, killing it",
+                    MAX_WAIT.as_secs(),
+                    self.vm.uuid()
+                );
             }
         }
         self.cleanup();

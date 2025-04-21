@@ -12,6 +12,10 @@ mod init;
 mod mmds;
 mod sh;
 
+extern "C" fn handle_signal(sig: i32) {
+    todo!("Gracefully handle signal {}", sig);
+}
+
 fn main() {
     simple_logger::init_with_level(if cfg!(debug_assertions) {
         log::Level::Debug
@@ -24,6 +28,10 @@ fn main() {
 
     if std::process::id() != 1 {
         panic!("This program is an init program and must be run as PID 1");
+    }
+
+    unsafe {
+        libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t);
     }
 
     log::info!("Running NodeAgent v. {}", env!("CARGO_PKG_VERSION"));

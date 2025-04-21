@@ -54,4 +54,9 @@ pub fn init() {
     } else {
         log::debug!("Session id set to: {}", session_id);
     }
+
+    // write 0 to /proc/sys/kernel/ctrl-alt-del
+    log::debug!("Enabling signal based Ctrl-Alt-Del");
+    std::fs::write("/proc/sys/kernel/ctrl-alt-del", b"0")
+        .expect("Unable to write to /proc/sys/kernel/ctrl-alt-del");
 }
