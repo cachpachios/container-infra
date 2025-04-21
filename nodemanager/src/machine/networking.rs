@@ -18,7 +18,7 @@ pub fn cmd(cmd: &str, args: &[&str]) -> Result<()> {
 }
 
 pub struct TunTap {
-    pub name: String,
+    name: String,
 }
 
 impl TunTap {
@@ -28,6 +28,10 @@ impl TunTap {
             name: name.to_string(),
         };
         Ok(tap)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn add_address(&self, cidr_addrs: &str) -> Result<()> {

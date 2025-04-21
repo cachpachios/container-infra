@@ -7,9 +7,17 @@ message ProvisionRequest {
 }
 
 message ProvisionResponse {
+    string id = 1;
 }
+
+message InstanceId {
+    string id = 1;
+}
+
+message Empty {}
 
 service NodeManager {
     // Our SayHello rpc accepts HelloRequests and returns HelloReplies
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
+    rpc Deprovision (InstanceId) returns (Empty);
 }

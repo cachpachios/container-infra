@@ -10,8 +10,9 @@ use log::debug;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::networking::TunTap;
+use crate::machine::networking::TunTap;
 
+// Firecracker types
 #[derive(Serialize)]
 struct Drive {
     // cache_type
@@ -66,7 +67,7 @@ struct MachineConfig {
 #[derive(Serialize)]
 enum InstanceAction {
     InstanceStart,
-    // SendCtrlAltDel,
+    SendCtrlAltDel,
     // FlushMetrics,
 }
 
@@ -106,7 +107,7 @@ impl JailedCracker {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
-        // cmd.stdin(Stdio::null());
+        cmd.stdin(Stdio::null());
 
         let fc_bin = firecracker_bin
             .file_name()
@@ -164,8 +165,29 @@ impl JailedCracker {
         ))
     }
 
-    pub fn cleanup(mut self) -> Result<()> {
-        let _ = self.proc.kill();
+    pub fn uuid(&self) -> &str {
+        &self.uuid
+    }
+
+    pub async fn request_stop(&mut self) -> Result<()> {
+        debug!("Sending CtrlAltDelete firecracker instance {}", self.uuid);
+        self.request_with_json(
+            "/actions",
+            Method::PUT,
+            &InstanceActionInfo {
+                action_type: InstanceAction::SendCtrlAltDel,
+            },
+        )
+        .await
+    }
+
+    pub fn kill(&mut self) -> Result<()> {
+        self.proc.kill()?;
+        Ok(())
+    }
+
+    pub fn cleanup(&mut self) -> Result<()> {
+        let _ = self.kill();
         std::fs::remove_dir_all(&self.root_path.parent().unwrap())?;
         Ok(())
     }
@@ -218,7 +240,7 @@ impl JailedCracker {
     }
 
     pub async fn set_eth_tap(&mut self, tap: &TunTap) -> Result<()> {
-        self.add_network_interface("eth0", &tap.name).await?;
+        self.add_network_interface("eth0", tap.name()).await?;
         self.config_mmds("eth0").await?;
         Ok(())
     }
