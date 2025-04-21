@@ -1,0 +1,15 @@
+syntax = "proto3";
+package node;
+
+
+message ProvisionRequest {
+    string container_reference = 1;
+}
+
+message ProvisionResponse {
+}
+
+service NodeManager {
+    // Our SayHello rpc accepts HelloRequests and returns HelloReplies
+    rpc Provision (ProvisionRequest) returns (ProvisionResponse);
+}
