@@ -1,11 +1,11 @@
 <mxfile host="Electron" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.2.2 Chrome/134.0.6998.178 Electron/35.1.2 Safari/537.36" version="26.2.2">
   <diagram name="Page-1" id="5rqxuEU24Q9RjIC_nrNp">
-    <mxGraphModel dx="1576" dy="659" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1550" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2251" dy="941" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1550" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="XftDI_xavtV7cQK9SFd--62" value="Internal network&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fillColor=none;align=left;verticalAlign=top;" parent="1" vertex="1">
-          <mxGeometry x="736" y="440" width="404" height="330" as="geometry" />
+          <mxGeometry x="736" y="420" width="404" height="350" as="geometry" />
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--26" value="Example Node" style="whiteSpace=wrap;html=1;aspect=fixed;verticalAlign=top;align=left;" parent="1" vertex="1">
           <mxGeometry x="785" y="500" width="242" height="242" as="geometry" />
@@ -45,14 +45,26 @@
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--70" value="push state" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="XftDI_xavtV7cQK9SFd--20" vertex="1" connectable="0">
           <mxGeometry x="-0.4523" y="-3" relative="1" as="geometry">
-            <mxPoint x="7" as="offset" />
+            <mxPoint x="29" y="-6" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="AdsSLZrIDyogifaCDy0S-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontFamily=Helvetica;fontSize=12;fontColor=default;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="XftDI_xavtV7cQK9SFd--6" target="AdsSLZrIDyogifaCDy0S-1" edge="1">
-          <mxGeometry relative="1" as="geometry" />
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="906" y="460" />
+              <mxPoint x="1230" y="460" />
+              <mxPoint x="1230" y="420" />
+              <mxPoint x="1390" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="6__6VmGAdkdRjpHTs191-1" value="push state" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="AdsSLZrIDyogifaCDy0S-5">
+          <mxGeometry x="-0.5319" y="-4" relative="1" as="geometry">
+            <mxPoint y="-4" as="offset" />
+          </mxGeometry>
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--6" value="Provisioner Backend" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="846" y="370" width="120" height="30" as="geometry" />
+          <mxGeometry x="846" y="410" width="120" height="30" as="geometry" />
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="XftDI_xavtV7cQK9SFd--14" target="XftDI_xavtV7cQK9SFd--6" edge="1">
           <mxGeometry relative="1" as="geometry" />
@@ -70,8 +82,8 @@
             <mxPoint x="-5" y="26" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="XftDI_xavtV7cQK9SFd--14" value="User" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" parent="1" vertex="1">
-          <mxGeometry x="640" y="260" width="30" height="60" as="geometry" />
+        <mxCell id="XftDI_xavtV7cQK9SFd--14" value="Developer&lt;br&gt;(Platform User)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" parent="1" vertex="1">
+          <mxGeometry x="670" y="140" width="30" height="60" as="geometry" />
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--41" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=11;strokeWidth=2;curved=0;" parent="1" source="XftDI_xavtV7cQK9SFd--17" target="XftDI_xavtV7cQK9SFd--27" edge="1">
           <mxGeometry relative="1" as="geometry">
@@ -106,7 +118,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--17" value="EDGE Proxy&lt;div&gt;(L7 HTTP &amp;amp; L4 TCP)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="1170" y="537.5" width="120" height="32.5" as="geometry" />
+          <mxGeometry x="1080" y="526.25" width="120" height="32.5" as="geometry" />
         </mxCell>
         <mxCell id="XftDI_xavtV7cQK9SFd--25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;" parent="1" source="XftDI_xavtV7cQK9SFd--24" target="XftDI_xavtV7cQK9SFd--17" edge="1">
           <mxGeometry relative="1" as="geometry" />
@@ -173,7 +185,7 @@
         <mxCell id="AdsSLZrIDyogifaCDy0S-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Helvetica;fontSize=12;fontColor=default;" parent="1" source="AdsSLZrIDyogifaCDy0S-1" target="XftDI_xavtV7cQK9SFd--17" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="AdsSLZrIDyogifaCDy0S-1" value="DNS Authority&lt;br&gt;(Provides some&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;LB)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=default;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=default;fillColor=none;" parent="1" vertex="1">
+        <mxCell id="AdsSLZrIDyogifaCDy0S-1" value="DNS Authority&lt;br&gt;(Provides&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;LB/HA)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=default;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fontColor=default;fillColor=none;" parent="1" vertex="1">
           <mxGeometry x="1330" y="440" width="120" height="60" as="geometry" />
         </mxCell>
       </root>
