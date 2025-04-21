@@ -15,4 +15,6 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 http-client-unix-domain-socket = { version = "0.1.1" }
 async-process = "2.3.0"
 futures-lite = "2.6.0"
+proto = { path = "../proto"}
+tonic = "0.13.0"
 
