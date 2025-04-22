@@ -40,15 +40,13 @@ impl NodeManagerService for NodeManager {
         request: Request<ProvisionRequest>,
     ) -> Result<Response<ProvisionResponse>, Status> {
         let request = request.into_inner();
-        info!(
-            "Provisioning node with container {}",
-            &request.container_reference
-        );
 
         let mut machines = self.machines.write().await;
 
         let machine_config = machine::MachineConfig {
             container_reference: request.container_reference,
+            vcpu_count: request.vcpus as u8,
+            mem_size_mb: request.memory_mb as u32,
         };
 
         let machine = Box::new(
@@ -61,6 +59,7 @@ impl NodeManagerService for NodeManager {
         );
         let uuid = machine.uuid().to_string();
         let machine = Arc::from(Mutex::from(machine));
+        info!("Provisioned node {} ", &uuid);
         machines.insert(uuid.clone(), machine);
         Ok(Response::new(ProvisionResponse { id: uuid }))
     }

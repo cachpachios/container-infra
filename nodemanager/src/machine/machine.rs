@@ -28,6 +28,8 @@ pub struct FirecrackerConfig {
 
 pub struct MachineConfig {
     pub container_reference: String,
+    pub vcpu_count: u8,
+    pub mem_size_mb: u32,
 }
 
 impl Machine {
@@ -63,7 +65,8 @@ impl Machine {
         )
         .await?;
 
-        vm.set_machine_config(4u8, 1024u32).await?;
+        vm.set_machine_config(config.vcpu_count, config.mem_size_mb)
+            .await?;
         vm.set_boot(
                 &fc_config.kernel_image,
                 "console=ttyS0 quiet loglevel=1 reboot=k panic=-1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",

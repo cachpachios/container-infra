@@ -13,6 +13,7 @@ mod mmds;
 mod sh;
 
 extern "C" fn handle_signal(sig: i32) {
+    log::info!("Received signal {}", sig);
     todo!("Gracefully handle signal {}", sig);
 }
 

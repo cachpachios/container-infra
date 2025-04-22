@@ -3,12 +3,8 @@ use log::info;
 use proto::node::InstanceId;
 use proto::node::ProvisionRequest;
 use proto::node::node_manager_client::NodeManagerClient;
-use std::env;
-use std::ffi::OsStr;
-use std::ffi::OsString;
-use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "nodecli")]
@@ -21,14 +17,26 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(arg_required_else_help = true)]
-    Provision { container_reference: String },
+    Provision {
+        container_reference: String,
+        #[arg(long, default_value_t = 1)]
+        vcpus: u8,
+        #[arg(long, default_value_t = 1024)]
+        memory_mb: u32,
+    },
     #[command(arg_required_else_help = true)]
     Deprovision { instance_id: String },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    simple_logger::init_with_level(if cfg!(debug_assertions) {
+        log::Level::Debug
+    } else {
+        log::Level::Info
+    })
+    .expect("Failed to initialize logger");
+
     let cli = Cli::parse();
 
     let mut client = NodeManagerClient::connect("http://[::1]:50051").await?;
@@ -36,9 +44,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Provision {
             container_reference,
+            vcpus,
+            memory_mb,
         } => {
             let request = tonic::Request::new(ProvisionRequest {
                 container_reference,
+                vcpus: vcpus as i32,
+                memory_mb: memory_mb as i32,
             });
 
             let response = client.provision(request).await;
