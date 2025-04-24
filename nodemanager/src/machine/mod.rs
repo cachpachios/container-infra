@@ -1,4 +1,5 @@
 mod firecracker;
+mod log;
 mod machine;
 mod networking;
 

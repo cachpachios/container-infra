@@ -20,7 +20,7 @@ use crate::machine;
 use crate::machine::Machine;
 
 pub struct NodeManager {
-    machines: RwLock<HashMap<String, Arc<Mutex<Box<Machine>>>>>,
+    machines: RwLock<HashMap<String, Machine>>,
     fc_config: machine::FirecrackerConfig,
 }
 
@@ -49,16 +49,13 @@ impl NodeManagerService for NodeManager {
             mem_size_mb: request.memory_mb as u32,
         };
 
-        let machine = Box::new(
-            Machine::new(&self.fc_config, machine_config)
-                .await
-                .map_err(|e| {
-                    info!("Failed to boot machine: {}", e);
-                    Status::internal("Failed to boot machine")
-                })?,
-        );
+        let machine = Machine::new(&self.fc_config, machine_config)
+            .await
+            .map_err(|e| {
+                info!("Failed to boot machine: {}", e);
+                Status::internal("Failed to boot machine")
+            })?;
         let uuid = machine.uuid().to_string();
-        let machine = Arc::from(Mutex::from(machine));
         info!("Provisioned node {} ", &uuid);
         machines.insert(uuid.clone(), machine);
         Ok(Response::new(ProvisionResponse { id: uuid }))
@@ -75,7 +72,6 @@ impl NodeManagerService for NodeManager {
 
         if let Some(machine) = machine {
             info!("Deprovisioning node with id {}", &request.id);
-            let mut machine = machine.lock().await;
             machine.shutdown().await;
             Ok(Response::new(Empty {}))
         } else {
