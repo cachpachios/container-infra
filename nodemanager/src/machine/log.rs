@@ -1,7 +1,10 @@
 use core::str;
 use futures_lite::io::AsyncReadExt;
 use std::sync::Arc;
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    Mutex,
+};
 
 use async_process::ChildStdout;
 
@@ -84,7 +87,7 @@ impl LogHandler {
         let mut to_drop = Vec::new();
 
         for (i, tx) in self.subscribers.iter().enumerate() {
-            if let Err(_) = tx.send(data_arc.clone()).await {
+            if let Err(_) = tx.try_send(data_arc.clone()) {
                 to_drop.push(i);
             }
         }
@@ -99,12 +102,19 @@ impl LogHandler {
         }
     }
 
-    pub fn subscribe(&mut self, tx: Sender<Arc<str>>) {
+    pub fn subscribe(&mut self) -> Receiver<Arc<str>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(128);
         self.subscribers.push(tx);
+        rx
     }
 
-    pub fn peak_buffer(&self) -> Vec<&String> {
-        self.log.buf.iter().filter_map(|s| s.as_ref()).collect()
+    pub fn clone_buffer(&self) -> Vec<String> {
+        self.log
+            .buf
+            .iter()
+            .filter_map(|s| s.as_ref())
+            .cloned()
+            .collect()
     }
 }
 

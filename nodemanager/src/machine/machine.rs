@@ -156,6 +156,13 @@ impl Machine {
         }
         let _ = self.vm.cleanup();
     }
+
+    pub async fn get_and_subscribe_to_logs(
+        &self,
+    ) -> (Vec<String>, tokio::sync::mpsc::Receiver<Arc<str>>) {
+        let mut handler = self.log.lock().await;
+        (handler.clone_buffer(), handler.subscribe())
+    }
 }
 
 impl Clone for Machine {

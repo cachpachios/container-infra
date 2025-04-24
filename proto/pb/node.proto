@@ -1,6 +1,7 @@
 syntax = "proto3";
 package node;
 
+message Empty {}
 
 message ProvisionRequest {
     string container_reference = 1;
@@ -16,10 +17,14 @@ message InstanceId {
     string id = 1;
 }
 
-message Empty {}
+message LogMessage {
+    string message = 1;
+}
 
 service NodeManager {
     // Our SayHello rpc accepts HelloRequests and returns HelloReplies
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
     rpc Deprovision (InstanceId) returns (Empty);
+
+    rpc StreamLogs (InstanceId) returns (stream LogMessage);
 }

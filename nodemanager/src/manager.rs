@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use log::info;
@@ -8,10 +9,15 @@ use proto::node::node_manager_server::NodeManager as NodeManagerService;
 use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceServer;
 use proto::node::Empty;
 use proto::node::InstanceId;
+use proto::node::LogMessage;
 use proto::node::ProvisionRequest;
 use proto::node::ProvisionResponse;
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::Stream;
+use tokio_stream::StreamExt;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
@@ -81,6 +87,48 @@ impl NodeManagerService for NodeManager {
             );
             Err(Status::not_found("Machine not found"))
         }
+    }
+
+    type StreamLogsStream = Pin<Box<dyn Stream<Item = Result<LogMessage, Status>> + Send>>;
+
+    async fn stream_logs(
+        &self,
+        request: Request<InstanceId>,
+    ) -> Result<Response<Self::StreamLogsStream>, Status> {
+        let request = request.into_inner();
+        let machines = self.machines.read().await;
+        let machine = match machines.get(&request.id) {
+            Some(machine) => machine,
+            None => {
+                warn!("Requested logs for missing machine with id {}", &request.id);
+                return Err(Status::not_found("Machine not found"));
+            }
+        };
+
+        let (logs, mut log_rx) = machine.get_and_subscribe_to_logs().await;
+
+        let (tx, rpc_rx) = mpsc::channel(128);
+        tokio::spawn(async move {
+            for log in logs {
+                let log_message = LogMessage { message: log };
+                if let Err(_) = tx.send(Ok(log_message)).await {
+                    return;
+                }
+            }
+            while let Some(log) = log_rx.recv().await {
+                let log_message = LogMessage {
+                    message: log.to_string(),
+                };
+                if let Err(_) = tx.send(Ok(log_message)).await {
+                    return;
+                }
+            }
+        });
+
+        let output_stream = ReceiverStream::new(rpc_rx);
+        Ok(Response::new(
+            Box::pin(output_stream) as Self::StreamLogsStream
+        ))
     }
 }
 

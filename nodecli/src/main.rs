@@ -25,7 +25,12 @@ enum Commands {
         memory_mb: u32,
     },
     #[command(arg_required_else_help = true)]
-    Deprovision { instance_id: String },
+    Deprovision {
+        instance_id: String,
+    },
+    Log {
+        instance_id: String,
+    },
 }
 
 #[tokio::main]
@@ -72,6 +77,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => error!("Failed to deprovision instance: {}", e),
             }
         }
+        Commands::Log { instance_id } => {
+            stream_logs(&mut client, instance_id.clone()).await;
+        }
     }
     Ok(())
+}
+
+async fn stream_logs(
+    client: &mut NodeManagerClient<tonic::transport::Channel>,
+    instance_id: String,
+) {
+    let request = tonic::Request::new(InstanceId {
+        id: instance_id.clone(),
+    });
+    let response = client.stream_logs(request).await;
+    match response {
+        Ok(stream) => {
+            let mut stream = stream.into_inner();
+            loop {
+                let next = stream.message().await;
+                match next {
+                    Ok(Some(log_message)) => {
+                        println!("{}", log_message.message);
+                    }
+                    Ok(None) => {
+                        info!("No more logs for instance {}", instance_id);
+                        break;
+                    }
+                    Err(e) => {
+                        error!("Error receiving log message: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+        Err(e) => error!("Failed to get logs for instance {}: {}", instance_id, e),
+    }
 }
