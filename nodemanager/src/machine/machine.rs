@@ -163,6 +163,11 @@ impl Machine {
         let mut handler = self.log.lock().await;
         (handler.clone_buffer(), handler.subscribe())
     }
+
+    pub async fn get_logs(&self) -> Vec<String> {
+        let handler = self.log.lock().await;
+        handler.clone_buffer()
+    }
 }
 
 impl Clone for Machine {

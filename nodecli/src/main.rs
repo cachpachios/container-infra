@@ -1,5 +1,6 @@
 use log::error;
 use log::info;
+use proto::node::Empty;
 use proto::node::InstanceId;
 use proto::node::ProvisionRequest;
 use proto::node::node_manager_client::NodeManagerClient;
@@ -23,6 +24,9 @@ enum Commands {
         vcpus: u8,
         #[arg(long, default_value_t = 1024)]
         memory_mb: u32,
+
+        #[arg(long, default_value_t = false)]
+        dont_tail_logs: bool,
     },
     #[command(arg_required_else_help = true)]
     Deprovision {
@@ -30,7 +34,11 @@ enum Commands {
     },
     Log {
         instance_id: String,
+
+        #[arg(long, default_value_t = false)]
+        tail: bool,
     },
+    Drain,
 }
 
 #[tokio::main]
@@ -51,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             container_reference,
             vcpus,
             memory_mb,
+            dont_tail_logs,
         } => {
             let request = tonic::Request::new(ProvisionRequest {
                 container_reference,
@@ -63,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(res) => {
                     let instance_id = res.into_inner().id;
                     info!("Provisioned instance with id {}", instance_id);
+                    if !dont_tail_logs {
+                        stream_logs(&mut client, instance_id).await;
+                    }
                 }
                 Err(e) => error!("Failed to provision instance: {}", e),
             }
@@ -77,8 +89,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => error!("Failed to deprovision instance: {}", e),
             }
         }
-        Commands::Log { instance_id } => {
-            stream_logs(&mut client, instance_id.clone()).await;
+        Commands::Log { instance_id, tail } => {
+            if tail {
+                stream_logs(&mut client, instance_id.clone()).await;
+            } else {
+                client
+                    .get_logs(tonic::Request::new(InstanceId {
+                        id: instance_id.clone(),
+                    }))
+                    .await
+                    .map(|response| {
+                        let logs = response.into_inner().logs;
+                        for log in logs {
+                            println!("{}", log.message);
+                        }
+                    })
+                    .map_err(|e| error!("Failed to get logs for instance {}: {}", instance_id, e))
+                    .ok();
+            }
+        }
+        Commands::Drain => {
+            if let Err(e) = client.drain(tonic::Request::new(Empty {})).await {
+                error!("Failed to drain: {}", e);
+            } else {
+                info!("Drained node!");
+            }
         }
     }
     Ok(())

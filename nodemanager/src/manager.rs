@@ -7,6 +7,7 @@ use log::info;
 use log::warn;
 use proto::node::node_manager_server::NodeManager as NodeManagerService;
 use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceServer;
+use proto::node::AllLogs;
 use proto::node::Empty;
 use proto::node::InstanceId;
 use proto::node::LogMessage;
@@ -129,6 +130,37 @@ impl NodeManagerService for NodeManager {
         Ok(Response::new(
             Box::pin(output_stream) as Self::StreamLogsStream
         ))
+    }
+
+    async fn get_logs(&self, request: Request<InstanceId>) -> Result<Response<AllLogs>, Status> {
+        let request = request.into_inner();
+        let machines = self.machines.read().await;
+        let machine = match machines.get(&request.id) {
+            Some(machine) => machine,
+            None => {
+                warn!("Requested logs for missing machine with id {}", &request.id);
+                return Err(Status::not_found("Machine not found"));
+            }
+        };
+
+        Ok(Response::new(AllLogs {
+            logs: machine
+                .get_logs()
+                .await
+                .into_iter()
+                .map(|s| LogMessage { message: s })
+                .collect(),
+        }))
+    }
+
+    async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
+        let mut machines = self.machines.write().await;
+        warn!("Draining all machines on node");
+        for (id, machine) in machines.drain() {
+            info!("Deprovisioning id {}", &id);
+            machine.shutdown().await;
+        }
+        Ok(Response::new(Empty {}))
     }
 }
 

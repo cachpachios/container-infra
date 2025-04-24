@@ -21,10 +21,16 @@ message LogMessage {
     string message = 1;
 }
 
+message AllLogs {
+    repeated LogMessage logs = 1;
+}
+
 service NodeManager {
-    // Our SayHello rpc accepts HelloRequests and returns HelloReplies
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
     rpc Deprovision (InstanceId) returns (Empty);
 
     rpc StreamLogs (InstanceId) returns (stream LogMessage);
+    rpc GetLogs (InstanceId) returns (AllLogs);
+
+    rpc Drain(Empty) returns (Empty);
 }
