@@ -13,6 +13,9 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    #[arg(long)]
+    address: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -26,7 +29,7 @@ enum Commands {
         memory_mb: u32,
 
         #[arg(long, default_value_t = false)]
-        dont_tail_logs: bool,
+        dont_tail: bool,
     },
     #[command(arg_required_else_help = true)]
     Deprovision {
@@ -51,15 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .expect("Failed to initialize logger");
 
     let cli = Cli::parse();
-
-    let mut client = NodeManagerClient::connect("http://[::1]:50051").await?;
+    let mut client =
+        NodeManagerClient::connect(cli.address.unwrap_or("http://[::1]:50051".to_string())).await?;
 
     match cli.command {
         Commands::Provision {
             container_reference,
             vcpus,
             memory_mb,
-            dont_tail_logs,
+            dont_tail,
         } => {
             let request = tonic::Request::new(ProvisionRequest {
                 container_reference,
@@ -72,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(res) => {
                     let instance_id = res.into_inner().id;
                     info!("Provisioned instance with id {}", instance_id);
-                    if !dont_tail_logs {
+                    if !dont_tail {
                         stream_logs(&mut client, instance_id).await;
                     }
                 }

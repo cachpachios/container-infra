@@ -116,10 +116,14 @@ impl LogHandler {
             .cloned()
             .collect()
     }
+
+    fn drop_subscribers(&mut self) {
+        self.subscribers.clear();
+    }
 }
 
 async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
-    let mut buf = [0; MAX_LINE_LENGTH];
+    let mut buf = [0; MAX_LINE_LENGTH + 1024];
     let mut pos = 0;
     loop {
         pos = pos.min(MAX_LINE_LENGTH);
@@ -146,7 +150,7 @@ async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
                 } else {
                     pos += n;
                     if pos >= MAX_LINE_LENGTH - 1024 {
-                        const OVERFLOW: &[u8] = b"OVERFLOW";
+                        const OVERFLOW: &[u8] = b"???";
                         pos = MAX_LINE_LENGTH - 1024;
                         buf[pos..].copy_from_slice(OVERFLOW);
                         pos += OVERFLOW.len();
@@ -159,4 +163,5 @@ async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
             }
         }
     }
+    handler.lock().await.drop_subscribers();
 }

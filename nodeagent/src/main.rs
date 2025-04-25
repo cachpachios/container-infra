@@ -84,6 +84,7 @@ fn main() {
 fn shutdown() {
     unsafe {
         reboot(libc::LINUX_REBOOT_CMD_RESTART);
+        std::process::exit(1);
     };
 }
 
