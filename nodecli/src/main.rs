@@ -23,13 +23,17 @@ enum Commands {
     #[command(arg_required_else_help = true)]
     Provision {
         container_reference: String,
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=32), help="Number of vCPUs to provision, max 32.")]
         vcpus: u8,
-        #[arg(long, default_value_t = 1024)]
+        #[arg(long, default_value_t = 1024, help = "Memory in MB")]
         memory_mb: u32,
 
-        #[arg(long, default_value_t = false)]
-        dont_tail: bool,
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Don't tail logs after provisioning"
+        )]
+        dont_tail_logs: bool,
     },
     #[command(arg_required_else_help = true)]
     Deprovision {
@@ -62,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             container_reference,
             vcpus,
             memory_mb,
-            dont_tail,
+            dont_tail_logs,
         } => {
             let request = tonic::Request::new(ProvisionRequest {
                 container_reference,
@@ -75,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(res) => {
                     let instance_id = res.into_inner().id;
                     info!("Provisioned instance with id {}", instance_id);
-                    if !dont_tail {
+                    if !dont_tail_logs {
                         stream_logs(&mut client, instance_id).await;
                     }
                 }
