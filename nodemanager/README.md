@@ -1,10 +1,12 @@
 # NodeAgent
 
-## System Dependencies
+Use the `setup_dev_ubuntu.sh` script. It will download firecracker, a linux kernel image, and construct the nodeagent rootfs.
 
-You need a protobuf compiler. 
-For distrubutions with apt (i.e Ubuntu):
-
+Then build and run like this:
 ```bash
-sudo apt install protobuf-compiler
+cargo build && RUST_LOG=debug ./target/debug/nodemanager
 ```
+
+You need sudo access to spin up VMs.
+
+To run some VMs look at the `nodecli` utility.
