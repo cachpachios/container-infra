@@ -49,23 +49,37 @@ fi
 
 echo Dependencies finished. Generating the rootfs
 
+sudo umount target/nodeagent_tmp_rootfs || true # If the rootfs is already mounted, unmount it
 rm -f target/rootfs.ext4 || true
 
+
 echo Creating the rootfs
-truncate -s 128M target/rootfs.ext4
+# Create a ext4 filesystem image.
+# 128MB for debug and 32MB for release
+
+if [ "$SHOULD_BUILD_DEBUG" = "true" ]; then
+    echo Creating debug rootfs
+    truncate -s 128M target/rootfs.ext4
+else
+    echo Creating release rootfs
+    truncate -s 32M target/rootfs.ext4
+fi
 sudo mkfs.ext4 target/rootfs.ext4
 
+# Mount on a temporary directory
 rm -rf target/nodeagent_tmp_rootfs || true
 mkdir target/nodeagent_tmp_rootfs
 
 echo Mounting the rootfs
 sudo mount target/rootfs.ext4 target/nodeagent_tmp_rootfs
 
+# Scaffold the rootfs
 sudo mkdir -p target/nodeagent_tmp_rootfs/{sbin,dev,proc,run,sys,bin,etc,mnt}
 sudo mkdir -p target/nodeagent_tmp_rootfs/dev/pts
 sudo mkdir -p target/nodeagent_tmp_rootfs/var/run
 echo Coping the static init to the rootfs
 
+# Copy the static init to the rootfs
 if [ "$SHOULD_BUILD_DEBUG" = "true" ]; then
     echo Copying debug version of nodeagent
     sudo cp target/x86_64-unknown-linux-musl/debug/nodeagent target/nodeagent_tmp_rootfs/sbin/init
@@ -75,19 +89,24 @@ else
 fi
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/init
 
+# Copy the static busybox to the rootfs
 sudo cp target/busybox target/nodeagent_tmp_rootfs/sbin/busybox
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/busybox
 
 sudo ln -s /sbin/busybox target/nodeagent_tmp_rootfs/bin/busybox
 
+# Create the symlinks for busybox by running it inside root with chroot
 sudo chroot target/nodeagent_tmp_rootfs /sbin/busybox --install -s /bin
 
+# Copy the static mke2fs to the rootfs
 sudo cp target/mke2fs target/nodeagent_tmp_rootfs/sbin/mke2fs
 sudo chmod +x target/nodeagent_tmp_rootfs/sbin/mke2fs
 
+# Copy the static crun to the rootfs
 sudo cp target/crun target/nodeagent_tmp_rootfs/bin/crun
 sudo chmod +x target/nodeagent_tmp_rootfs/bin/crun
 
+# Setup some common config files
 touch target/resolv.conf
 echo "nameserver 8.8.8.8" > target/resolv.conf
 sudo mv target/resolv.conf target/nodeagent_tmp_rootfs/etc/resolv.conf
@@ -104,6 +123,8 @@ sudo mv target/passwd target/nodeagent_tmp_rootfs/etc/passwd
 touch target/group
 echo "root:x:0:" > target/group
 sudo mv target/group target/nodeagent_tmp_rootfs/etc/group
+
+# Unmount the rootfs!
 
 echo Unmounting the rootfs
 sudo umount target/nodeagent_tmp_rootfs
