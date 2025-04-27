@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::{
     machine::{firecracker, log::LogHandler},
@@ -34,15 +34,23 @@ pub struct MachineConfig {
     pub mem_size_mb: u32,
 }
 
+pub struct ContainerOverrides {
+    pub cmd_args: Option<Vec<String>>,
+    pub env: Option<BTreeMap<String, String>>,
+}
+
 impl Machine {
     pub async fn new(
         fc_config: &ManagerConfig,
         config: MachineConfig,
         network_stack: NetworkStack,
+        overrides: ContainerOverrides,
     ) -> Result<(Self, tokio::sync::oneshot::Receiver<()>)> {
         #[derive(Serialize)]
         struct Container {
             image: String,
+            cmd_args: Option<Vec<String>>,
+            env: Option<BTreeMap<String, String>>,
         }
 
         #[derive(Serialize)]
@@ -58,6 +66,8 @@ impl Machine {
         let metadata = Metadata {
             container: Container {
                 image: config.container_reference,
+                cmd_args: overrides.cmd_args,
+                env: overrides.env,
             },
         };
 

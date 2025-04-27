@@ -1,10 +1,14 @@
 use oci_spec::distribution::Reference;
+use rt::RuntimeOverrides;
 
 pub mod fs;
 pub mod registry;
 pub mod rt;
 
-pub fn pull_image(reference: Reference) -> Result<(), registry::RegistryErrors> {
+pub fn pull_and_prepare_image(
+    reference: Reference,
+    overrides: &RuntimeOverrides,
+) -> Result<(), registry::RegistryErrors> {
     log::info!("Pulling container image: {}", reference.whole(),);
 
     let auth = registry::docker_io_oauth("repository", &reference.repository(), &["pull"])
@@ -55,11 +59,6 @@ pub fn pull_image(reference: Reference) -> Result<(), registry::RegistryErrors> 
     for jh in layer_threads {
         jh.join().map_err(|_| registry::RegistryErrors::IOErr)??;
     }
-
-    let overrides = rt::RuntimeOverrides {
-        args: None, //Some(vec!["/bin/sh".to_string()]),
-        terminal: true,
-    };
 
     config
         .to_file(&folder.join("image_config.json"))

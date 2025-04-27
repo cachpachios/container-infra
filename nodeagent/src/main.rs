@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs::OpenOptions,
     io::Write,
     panic::PanicHookInfo,
@@ -45,6 +46,8 @@ fn main() {
     #[derive(serde::Deserialize)]
     struct ContainerConfig {
         image: String,
+        cmd_args: Option<Vec<String>>,
+        env: Option<BTreeMap<String, String>>,
     }
 
     let container_config: ContainerConfig = mmds
@@ -52,9 +55,16 @@ fn main() {
         .expect("Unable to get container config");
     let reference = Reference::try_from(container_config.image).expect("Unable to parse reference");
 
-    containers::pull_image(reference).expect("Unable to pull image");
+    let rt_overrides = crate::containers::rt::RuntimeOverrides {
+        additional_args: container_config.cmd_args,
+        additional_env: container_config.env,
+        terminal: false,
+    };
+
+    containers::pull_and_prepare_image(reference, &rt_overrides).expect("Unable to pull image");
 
     log::info!("Running container...");
+    log::debug!("Runtime overrides: {:?}", rt_overrides);
     flush_buffers();
 
     let tty = OpenOptions::new()

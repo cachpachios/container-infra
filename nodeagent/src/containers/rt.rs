@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use oci_spec::{
     image::ImageConfiguration,
@@ -38,7 +38,8 @@ const DEFAULT_NAMESPACES: &[LinuxNamespaceType] = &[
 
 #[derive(Debug, Default)]
 pub struct RuntimeOverrides {
-    pub args: Option<Vec<String>>,
+    pub additional_args: Option<Vec<String>>,
+    pub additional_env: Option<BTreeMap<String, String>>,
     pub terminal: bool,
 }
 
@@ -53,8 +54,16 @@ pub fn create_runtime_spec(
     let spec = SpecBuilder::default();
 
     let mut args;
-    if let Some(override_args) = &overrides.args {
-        args = override_args.clone();
+    if let Some(override_args) = &overrides.additional_args {
+        match config.entrypoint() {
+            Some(entry_args) => {
+                args = entry_args.clone();
+                args.extend(override_args.clone());
+            }
+            None => {
+                args = override_args.clone();
+            }
+        }
     } else if let Some(cmd_args) = config.cmd() {
         match config.entrypoint() {
             Some(entry_args) => {
@@ -71,9 +80,15 @@ pub fn create_runtime_spec(
         args = vec!["/bin/sh".to_string()];
     }
 
-    let mut env = config.env().clone().unwrap_or_else(|| {
+    let mut env: Vec<String> = config.env().clone().unwrap_or_else(|| {
         vec!["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()]
     });
+
+    if let Some(additional_env) = &overrides.additional_env {
+        for (key, value) in additional_env.iter() {
+            env.push(format!("{}={}", key, value));
+        }
+    }
 
     if overrides.terminal {
         env.push("TERM=xterm".to_string());

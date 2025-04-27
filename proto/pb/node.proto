@@ -7,6 +7,9 @@ message ProvisionRequest {
     string container_reference = 1;
     int32 vcpus = 2;
     int32 memory_mb = 3;
+
+    repeated string cmd_args = 4;
+    map<string, string> env = 5;
 }
 
 message ProvisionResponse {

@@ -53,8 +53,20 @@ impl InnerNodeManager {
         );
         network_stack.setup_public_nat(&self.fc_config.public_network_interface)?;
 
+        let mut overrides = machine::ContainerOverrides {
+            cmd_args: None,
+            env: None,
+        };
+
+        if request.cmd_args.len() > 0 {
+            overrides.cmd_args = Some(request.cmd_args);
+        }
+        if request.env.len() > 0 {
+            overrides.env = Some(request.env.into_iter().collect());
+        }
+
         let (machine, machine_stop_rx) =
-            Machine::new(&self.fc_config, machine_config, network_stack).await?;
+            Machine::new(&self.fc_config, machine_config, network_stack, overrides).await?;
         let uuid = machine.uuid().to_string();
         info!("Provisioned node {} ", &uuid);
         machines.insert(uuid.clone(), machine);
@@ -136,6 +148,7 @@ impl NodeManagerService for NodeManager {
         request: Request<ProvisionRequest>,
     ) -> Result<Response<ProvisionResponse>, Status> {
         let request = request.into_inner();
+        debug!("Provisioning machine with request: {:?}", request);
         let id = self
             .inner
             ._provision(request, self.inner.clone())

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use log::error;
 use log::info;
 use proto::node::Empty;
@@ -34,6 +36,16 @@ enum Commands {
             help = "Don't tail logs after provisioning"
         )]
         dont_tail_logs: bool,
+
+        #[arg(short, long, help = "Environment variables to set in the container")]
+        environment: Option<Vec<String>>,
+
+        #[arg(
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            help = "Command line arguments to override when running the container"
+        )]
+        args: Vec<String>,
     },
     #[command(arg_required_else_help = true)]
     Deprovision {
@@ -67,11 +79,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vcpus,
             memory_mb,
             dont_tail_logs,
+            environment,
+            args,
         } => {
+            let mut parsed_env =
+                HashMap::with_capacity(environment.as_ref().map_or(0, |v| v.len()));
+            for env in environment.unwrap_or_default() {
+                let mut parts = env.split('=');
+                if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                    parsed_env.insert(key.to_string(), value.to_string());
+                } else {
+                    error!(
+                        "Invalid environment variable format: {}, expected \"KEY=VALUE\".",
+                        env
+                    );
+                }
+            }
+
             let request = tonic::Request::new(ProvisionRequest {
                 container_reference,
                 vcpus: vcpus as i32,
                 memory_mb: memory_mb as i32,
+                env: parsed_env,
+                cmd_args: args,
             });
 
             let response = client.provision(request).await;
