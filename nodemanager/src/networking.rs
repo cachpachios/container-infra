@@ -55,7 +55,7 @@ pub struct NetworkStack {
     ipv4_addr: Ipv4Addr,
     gateway: Ipv4Addr,
     nic: TunTap,
-    chain_rules: Vec<Vec<String>>,
+    delete_chain_args: Vec<Vec<String>>,
 }
 
 impl NetworkStack {
@@ -68,53 +68,70 @@ impl NetworkStack {
             ipv4_addr: slot.ipv4_addr,
             gateway: slot.gateway,
             nic: tap,
-            chain_rules: Vec::new(),
+            delete_chain_args: Vec::new(),
         })
     }
 
-    fn add_ip_rule(&mut self, args: &[&str]) -> Result<()> {
+    fn add_ip_rule(&mut self, args: &[&str], delete_args: Vec<String>) -> Result<()> {
         cmd("iptables-nft", args)?;
-        self.chain_rules
-            .push(args.iter().map(|s| s.to_string()).collect());
+        self.delete_chain_args.push(delete_args);
         Ok(())
+    }
+
+    fn add_ip_rule_replace_first_arg(&mut self, args: &[&str], replaced_args: &str) -> Result<()> {
+        // This function is stupid. Should be replace with direct nft commands instead of through iptables...
+        let replace_arg_list = [replaced_args.to_string()]
+            .into_iter()
+            .chain(args.iter().skip(1).map(|s| s.to_string()))
+            .collect::<Vec<String>>();
+        self.add_ip_rule(args, replace_arg_list)
     }
 
     pub fn setup_public_nat(&mut self, outbound_if_name: &str) -> Result<()> {
         let addr = self.ipv4_addr.to_string();
         let nic_name = self.nic.name().to_owned(); // Stupid borrow checker
-        self.add_ip_rule(&[
-            "-t",
-            "nat",
-            "-A",
-            "POSTROUTING",
-            "-o",
-            outbound_if_name,
-            "-s",
-            &addr,
-            "-j",
-            "MASQUERADE",
-        ])?;
-        self.add_ip_rule(&[
-            "-A",
-            "FORWARD",
-            "-m",
-            "conntrack",
-            "--ctstate",
-            "RELATED,ESTABLISHED",
-            "-j",
-            "ACCEPT",
-        ])?;
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-A",
+                "POSTROUTING",
+                "-t",
+                "nat",
+                "-o",
+                outbound_if_name,
+                "-s",
+                &addr,
+                "-j",
+                "MASQUERADE",
+            ],
+            "-D",
+        )?;
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-A",
+                "FORWARD",
+                "-m",
+                "conntrack",
+                "--ctstate",
+                "RELATED,ESTABLISHED",
+                "-j",
+                "ACCEPT",
+            ],
+            "-D",
+        )?;
 
-        self.add_ip_rule(&[
-            "-A",
-            "FORWARD",
-            "-i",
-            &nic_name,
-            "-o",
-            outbound_if_name,
-            "-j",
-            "ACCEPT",
-        ])?;
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-A",
+                "FORWARD",
+                "-i",
+                &nic_name,
+                "-o",
+                outbound_if_name,
+                "-j",
+                "ACCEPT",
+            ],
+            "-D",
+        )?;
         Ok(())
     }
 
@@ -145,12 +162,9 @@ impl NetworkStack {
 
 impl Drop for NetworkStack {
     fn drop(&mut self) {
-        for rule in &self.chain_rules {
-            let args = ["--delete"]
-                .into_iter()
-                .chain(rule.iter().map(|s| s.as_str()))
-                .collect::<Vec<_>>();
-            let _ = cmd("iptables-nft", &args);
+        for rule in &self.delete_chain_args {
+            let args = rule.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
+            let _ = cmd("iptables-nft", args.as_slice());
         }
     }
 }
