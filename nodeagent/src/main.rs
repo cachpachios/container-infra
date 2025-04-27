@@ -1,5 +1,6 @@
 use std::{
     fs::OpenOptions,
+    io::Write,
     panic::PanicHookInfo,
     process::{Command, Stdio},
 };
@@ -54,6 +55,8 @@ fn main() {
     containers::pull_image(reference).expect("Unable to pull image");
 
     log::info!("Running container...");
+    flush_buffers();
+
     let tty = OpenOptions::new()
         .read(true)
         .write(true)
@@ -81,7 +84,13 @@ fn main() {
     shutdown();
 }
 
+fn flush_buffers() {
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+}
+
 fn shutdown() {
+    flush_buffers();
     unsafe {
         reboot(libc::LINUX_REBOOT_CMD_RESTART);
         std::process::exit(1);
@@ -101,5 +110,6 @@ fn panic(info: &PanicHookInfo) {
         std::backtrace::Backtrace::force_capture()
     );
     log::debug!("Shutting down node...");
+    flush_buffers();
     shutdown();
 }
