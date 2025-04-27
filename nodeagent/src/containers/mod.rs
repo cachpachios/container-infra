@@ -11,12 +11,18 @@ pub fn pull_and_prepare_image(
 ) -> Result<(), registry::RegistryErrors> {
     log::info!("Pulling container image: {}", reference.whole(),);
 
-    let auth = registry::docker_io_oauth("repository", &reference.repository(), &["pull"])
-        .map_err(|_| registry::RegistryErrors::AuthenticationError)?;
+    let mut auth: Option<String> = None;
+
+    if reference.registry() == "docker.io" {
+        auth = Some(
+            registry::docker_io_oauth("repository", &reference.repository(), &["pull"])
+                .map_err(|_| registry::RegistryErrors::AuthenticationError)?,
+        );
+    }
 
     let folder = std::path::PathBuf::from("/mnt");
 
-    let (manifest, config) = registry::get_manifest_and_config(&reference, Some(&auth))?;
+    let (manifest, config) = registry::get_manifest_and_config(&reference, auth.as_deref())?;
 
     let layers_folder = folder.join("layers");
     std::fs::create_dir_all(&layers_folder).map_err(|_| registry::RegistryErrors::IOErr)?;
@@ -43,7 +49,7 @@ pub fn pull_and_prepare_image(
         // Spawn a thread to pull the layer
         let jh = std::thread::spawn(move || {
             std::fs::create_dir_all(&folder).map_err(|_| registry::RegistryErrors::IOErr)?;
-            let r = registry::pull_and_extract_layer(&reference, &layer, &folder, Some(&auth));
+            let r = registry::pull_and_extract_layer(&reference, &layer, &folder, auth.as_deref());
             log::info!(
                 "Pulled layer {} of {} - {}",
                 i + 1,
