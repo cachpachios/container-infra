@@ -83,6 +83,16 @@ impl InnerNodeManager {
         }
         Ok(())
     }
+
+    async fn _drain(&self) -> anyhow::Result<()> {
+        let mut machines = self.machines.write().await;
+        let mut network_manager = self.network.lock().await;
+        for (id, machine) in machines.drain() {
+            info!("Deprovisioning id {}", &id);
+            network_manager.reclaim(machine.shutdown().await);
+        }
+        Ok(())
+    }
 }
 
 pub struct NodeManager {
@@ -90,15 +100,32 @@ pub struct NodeManager {
 }
 
 impl NodeManager {
-    pub fn new(fc_config: machine::ManagerConfig) -> Self {
-        let inner = InnerNodeManager {
+    pub async fn new(
+        fc_config: machine::ManagerConfig,
+    ) -> (
+        Self,
+        tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>,
+    ) {
+        let inner = Arc::new(InnerNodeManager {
             machines: RwLock::new(HashMap::new()),
             fc_config,
             network: Mutex::new(NetworkManager::new()),
-        };
-        NodeManager {
-            inner: Arc::new(inner),
-        }
+        });
+        let (shutdown_tx, shutdown_rx) =
+            tokio::sync::oneshot::channel::<tokio::sync::oneshot::Sender<()>>();
+
+        let inner_clone = inner.clone();
+        tokio::spawn(async move {
+            if let Ok(finished) = shutdown_rx.await {
+                warn!("Received shutdown signal, draining all machines");
+                inner_clone._drain().await.unwrap_or_else(|e| {
+                    error!("Failed to drain node manager: {}", e);
+                });
+                let _ = finished.send(());
+            }
+        });
+
+        (NodeManager { inner }, shutdown_tx)
     }
 }
 
@@ -194,26 +221,24 @@ impl NodeManagerService for NodeManager {
     }
 
     async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
-        let mut machines = self.inner.machines.write().await;
         warn!("Draining all machines on node");
-        let mut network_manager = self.inner.network.lock().await;
-        for (id, machine) in machines.drain() {
-            info!("Deprovisioning id {}", &id);
-            network_manager.reclaim(machine.shutdown().await);
-        }
+        self.inner._drain().await.map_err(|e| {
+            error!("Failed to drain node: {}", e);
+            Status::internal("Failed to drain node")
+        })?;
         Ok(Response::new(Empty {}))
     }
 }
 
-pub async fn run_server(manager: NodeManager) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn serve(manager: NodeManager) -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
 
     let server = NodeManagerServiceServer::new(manager);
     info!("NodeManager server listening on {}", addr);
-
     tonic::transport::Server::builder()
         .add_service(server)
         .serve(addr)
-        .await?;
+        .await
+        .expect("Failed to start server");
     Ok(())
 }

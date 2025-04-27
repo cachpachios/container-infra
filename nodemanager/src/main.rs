@@ -17,11 +17,24 @@ fn main() {
     let config: machine::ManagerConfig =
         serde_json::from_str(&config).expect("Unable to parse config file");
 
-    let manager = NodeManager::new(config);
-
     rt.block_on(async {
-        manager::run_server(manager)
+        let (manager, shutdown_tx) = NodeManager::new(config).await;
+
+        tokio::spawn(async move {
+            manager::serve(manager)
+                .await
+                .expect("Unable to start server")
+        });
+
+        tokio::signal::ctrl_c()
             .await
-            .expect("Unable to start server");
+            .expect("Failed to install Ctrl+C signal handler");
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        shutdown_tx
+            .send(finish_tx)
+            .expect("Failed to send shutdown signal");
+        finish_rx
+            .await
+            .expect("Failed to wait for shutdown to finish");
     });
 }
