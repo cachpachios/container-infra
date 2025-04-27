@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use log::debug;
 use log::error;
@@ -26,18 +27,77 @@ use crate::machine;
 use crate::machine::Machine;
 use crate::networking::NetworkManager;
 
-pub struct NodeManager {
+struct InnerNodeManager {
     machines: RwLock<HashMap<String, Machine>>,
     fc_config: machine::ManagerConfig,
     network: Mutex<NetworkManager>,
 }
 
+impl InnerNodeManager {
+    async fn _provision(
+        &self,
+        request: ProvisionRequest,
+        self_clone: Arc<InnerNodeManager>,
+    ) -> anyhow::Result<String> {
+        let mut machines = self.machines.write().await;
+
+        let machine_config = machine::MachineConfig {
+            container_reference: request.container_reference,
+            vcpu_count: request.vcpus as u8,
+            mem_size_mb: request.memory_mb as u32,
+        };
+        let mut network_stack = self.network.lock().await.provision_stack()?;
+        debug!(
+            "Network stack provision with local ip: {}",
+            network_stack.ipv4_addr()
+        );
+        network_stack.setup_public_nat(&self.fc_config.public_network_interface)?;
+
+        let (machine, machine_stop_rx) =
+            Machine::new(&self.fc_config, machine_config, network_stack).await?;
+        let uuid = machine.uuid().to_string();
+        info!("Provisioned node {} ", &uuid);
+        machines.insert(uuid.clone(), machine);
+
+        let uuid_clone = uuid.clone();
+
+        // Cleanup task
+        tokio::spawn(async move {
+            if let Some(_) = machine_stop_rx.await.ok() {
+                let _ = self_clone._deprovision(&uuid_clone).await;
+                info!("Machine {} stopped.", &uuid_clone);
+            }
+        });
+        Ok(uuid)
+    }
+
+    async fn _deprovision(&self, id: &str) -> anyhow::Result<()> {
+        let mut machines = self.machines.write().await;
+        if let Some(machine) = machines.remove(id) {
+            info!("Deprovisioning node {}", id);
+            let mut network = self.network.lock().await;
+            let network_stack = machine.shutdown().await;
+            network.reclaim(network_stack);
+        } else {
+            warn!("Requested deprovisioning of missing machine with id {}", id);
+        }
+        Ok(())
+    }
+}
+
+pub struct NodeManager {
+    inner: Arc<InnerNodeManager>,
+}
+
 impl NodeManager {
     pub fn new(fc_config: machine::ManagerConfig) -> Self {
-        NodeManager {
+        let inner = InnerNodeManager {
             machines: RwLock::new(HashMap::new()),
             fc_config,
             network: Mutex::new(NetworkManager::new()),
+        };
+        NodeManager {
+            inner: Arc::new(inner),
         }
     }
 }
@@ -49,62 +109,25 @@ impl NodeManagerService for NodeManager {
         request: Request<ProvisionRequest>,
     ) -> Result<Response<ProvisionResponse>, Status> {
         let request = request.into_inner();
-
-        let mut machines = self.machines.write().await;
-
-        let machine_config = machine::MachineConfig {
-            container_reference: request.container_reference,
-            vcpu_count: request.vcpus as u8,
-            mem_size_mb: request.memory_mb as u32,
-        };
-        let mut network_stack = self.network.lock().await.provision_stack().map_err(|e| {
-            error!("Failed to create network stack: {}", e);
-            Status::internal("Failed to create network stack")
-        })?;
-        debug!(
-            "Network stack provision with local ip: {}",
-            network_stack.ipv4_addr()
-        );
-        network_stack
-            .setup_public_nat(&self.fc_config.public_network_interface)
-            .map_err(|e| {
-                error!("Failed to setup public NAT: {}", e);
-                Status::internal("Failed to setup public NAT")
-            })?;
-
-        let machine = Machine::new(&self.fc_config, machine_config, network_stack)
+        let id = self
+            .inner
+            ._provision(request, self.inner.clone())
             .await
             .map_err(|e| {
-                info!("Failed to boot machine: {}", e);
-                Status::internal("Failed to boot machine")
+                error!("Failed to provision machine: {}", e);
+                Status::internal("Failed to provision machine")
             })?;
-        let uuid = machine.uuid().to_string();
-        info!("Provisioned node {} ", &uuid);
-        machines.insert(uuid.clone(), machine);
-        Ok(Response::new(ProvisionResponse { id: uuid }))
+        Ok(Response::new(ProvisionResponse { id }))
     }
 
     async fn deprovision(&self, request: Request<InstanceId>) -> Result<Response<Empty>, Status> {
         let request = request.into_inner();
 
-        let machine;
-        {
-            let mut machines = self.machines.write().await;
-            machine = machines.remove(&request.id);
-        }
-
-        if let Some(machine) = machine {
-            info!("Deprovisioning node with id {}", &request.id);
-            let network_stack = machine.shutdown().await;
-            self.network.lock().await.reclaim(network_stack);
-            Ok(Response::new(Empty {}))
-        } else {
-            warn!(
-                "Requested deprovisioning of missing machine with id {}",
-                &request.id
-            );
-            Err(Status::not_found("Machine not found"))
-        }
+        self.inner._deprovision(&request.id).await.map_err(|e| {
+            error!("Failed to deprovision machine: {}", e);
+            Status::internal("Failed to deprovision machine")
+        })?;
+        Ok(Response::new(Empty {}))
     }
 
     type StreamLogsStream = Pin<Box<dyn Stream<Item = Result<LogMessage, Status>> + Send>>;
@@ -114,7 +137,7 @@ impl NodeManagerService for NodeManager {
         request: Request<InstanceId>,
     ) -> Result<Response<Self::StreamLogsStream>, Status> {
         let request = request.into_inner();
-        let machines = self.machines.read().await;
+        let machines = self.inner.machines.read().await;
         let machine = match machines.get(&request.id) {
             Some(machine) => machine,
             None => {
@@ -151,7 +174,7 @@ impl NodeManagerService for NodeManager {
 
     async fn get_logs(&self, request: Request<InstanceId>) -> Result<Response<AllLogs>, Status> {
         let request = request.into_inner();
-        let machines = self.machines.read().await;
+        let machines = self.inner.machines.read().await;
         let machine = match machines.get(&request.id) {
             Some(machine) => machine,
             None => {
@@ -171,9 +194,9 @@ impl NodeManagerService for NodeManager {
     }
 
     async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
-        let mut machines = self.machines.write().await;
+        let mut machines = self.inner.machines.write().await;
         warn!("Draining all machines on node");
-        let mut network_manager = self.network.lock().await;
+        let mut network_manager = self.inner.network.lock().await;
         for (id, machine) in machines.drain() {
             info!("Deprovisioning id {}", &id);
             network_manager.reclaim(machine.shutdown().await);
@@ -184,8 +207,8 @@ impl NodeManagerService for NodeManager {
 
 pub async fn run_server(manager: NodeManager) -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
-    let server = NodeManagerServiceServer::new(manager);
 
+    let server = NodeManagerServiceServer::new(manager);
     info!("NodeManager server listening on {}", addr);
 
     tonic::transport::Server::builder()

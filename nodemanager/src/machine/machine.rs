@@ -39,7 +39,7 @@ impl Machine {
         fc_config: &ManagerConfig,
         config: MachineConfig,
         network_stack: NetworkStack,
-    ) -> Result<Self> {
+    ) -> Result<(Self, tokio::sync::oneshot::Receiver<()>)> {
         #[derive(Serialize)]
         struct Container {
             image: String,
@@ -85,7 +85,9 @@ impl Machine {
         vm.create_drive(8, "drive0").await?;
         vm.set_eth_tap(network_stack.nic()).await?;
 
-        let (log, jh) = LogHandler::spawn(out).await;
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+
+        let (log, jh) = LogHandler::spawn(out, stop_tx).await;
 
         let mut machine = Self {
             vm,
@@ -95,7 +97,7 @@ impl Machine {
         };
         machine.vm.start_vm().await?;
 
-        Ok(machine)
+        Ok((machine, stop_rx))
     }
 
     pub fn uuid(&self) -> &str {

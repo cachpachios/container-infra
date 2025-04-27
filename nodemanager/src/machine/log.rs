@@ -62,7 +62,10 @@ pub struct LogHandler {
 }
 
 impl LogHandler {
-    pub async fn spawn(out: ChildStdout) -> (Arc<Mutex<LogHandler>>, tokio::task::JoinHandle<()>) {
+    pub async fn spawn(
+        out: ChildStdout,
+        stop_handler: tokio::sync::oneshot::Sender<()>,
+    ) -> (Arc<Mutex<LogHandler>>, tokio::task::JoinHandle<()>) {
         let handler = Arc::new(Mutex::new(LogHandler {
             log: LogBuf::new(),
             subscribers: Vec::new(),
@@ -70,7 +73,7 @@ impl LogHandler {
 
         let handler_clone = handler.clone();
         let jh = tokio::spawn(async move {
-            stdout_handler(out, handler_clone).await;
+            stdout_handler(out, handler_clone, stop_handler).await;
         });
 
         (handler, jh)
@@ -122,7 +125,11 @@ impl LogHandler {
     }
 }
 
-async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
+async fn stdout_handler(
+    mut out: ChildStdout,
+    handler: Arc<Mutex<LogHandler>>,
+    stop_handler: tokio::sync::oneshot::Sender<()>,
+) {
     let mut buf = [0; MAX_LINE_LENGTH + 1024];
     let mut pos = 0;
     loop {
@@ -164,4 +171,5 @@ async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
         }
     }
     handler.lock().await.drop_subscribers();
+    let _ = stop_handler.send(());
 }
