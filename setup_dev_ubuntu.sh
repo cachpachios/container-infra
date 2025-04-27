@@ -24,7 +24,7 @@ sudo apt install -y \
 
 echo Downloading firecracker...
 
-if [ ! -f target/firecracker ]; then
+if [ ! -f nodemanager/target/firecracker/release-v1.11.0-x86_64/firecracker-v1.11.0-x86_64 ]; then
 
     mkdir -p nodemanager/target/firecracker || true
     wget -O nodemanager/target/firecracker/firecracker-v1.11.0-x86_64.tgz https://github.com/firecracker-microvm/firecracker/releases/download/v1.11.0/firecracker-v1.11.0-x86_64.tgz
