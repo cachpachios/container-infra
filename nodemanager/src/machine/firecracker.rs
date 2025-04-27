@@ -6,11 +6,11 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use async_process::{Child, ChildStdout, Command};
 use http_client_unix_domain_socket::{ClientUnix, Method};
-use log::debug;
+use log::{debug, trace};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::machine::networking::TunTap;
+use crate::networking::TunTap;
 
 // Firecracker types
 #[derive(Serialize)]
@@ -43,7 +43,7 @@ enum MmdsVersion {
 
 #[derive(Serialize)]
 struct MmdsConfig {
-    //ipv4_address
+    ipv4_address: String,
     network_interfaces: Vec<String>,
     version: MmdsVersion,
 }
@@ -92,7 +92,7 @@ impl JailedCracker {
         mmds_json: Option<&str>,
     ) -> Result<(Self, ChildStdout)> {
         let uuid: String = Uuid::new_v4().to_string();
-        debug!("Starting jailed firecracker with id {}", uuid);
+        debug!("Starting jailed firecracker instance with id {}", uuid);
 
         let mut cmd = Command::new(jailer_bin);
         cmd.env_clear();
@@ -107,7 +107,7 @@ impl JailedCracker {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
-        cmd.stdin(Stdio::null());
+        //cmd.stdin(Stdio::null());
 
         let fc_bin = firecracker_bin
             .file_name()
@@ -140,7 +140,7 @@ impl JailedCracker {
             if socket_path.exists() {
                 break;
             }
-            debug!("Waiting for socket to be created... Sleeping 50us");
+            trace!("Waiting for socket to be created... Sleeping 50us");
             tokio::time::sleep(std::time::Duration::from_micros(50)).await;
         }
 
@@ -192,17 +192,13 @@ impl JailedCracker {
         Ok(())
     }
 
-    pub fn root_path(&self) -> &Path {
-        &self.root_path
-    }
-
     pub async fn set_rootfs(&mut self, path: &Path) -> Result<()> {
         let dest = self.root_path.join("root.fs");
-        debug!("Copying rootfs from {:?} to {:?}", path, dest);
+        trace!("Copying rootfs from {:?} to {:?}", path, dest);
         std::fs::copy(path, &dest)?;
         std::os::unix::fs::chown(&dest, Some(self.uid), Some(self.uid))?;
 
-        debug!("Putting rootfs in firecracker");
+        trace!("Putting rootfs in firecracker");
 
         let drive = Drive {
             drive_id: "rootfs".into(),
@@ -217,13 +213,13 @@ impl JailedCracker {
 
     pub async fn create_drive(&mut self, size_gb: u64, drive_id: &str) -> Result<()> {
         let fp = self.root_path.join(format!("{}.fs", drive_id));
-        debug!("Creating drive {} with size {}GB", drive_id, size_gb);
+        trace!("Creating drive {} with size {}GB", drive_id, size_gb);
         let f = std::fs::File::create(&fp)?;
         f.set_len(size_gb * 1024 * 1024 * 1024)?;
-        debug!("Chowning drive to {}", self.uid);
+        trace!("Chowning drive to {}", self.uid);
         std::os::unix::fs::chown(&fp, Some(self.uid), Some(self.uid))?;
 
-        debug!("Putting rootfs in firecracker");
+        trace!("Putting rootfs in firecracker");
         let drive_config = Drive {
             drive_id: drive_id.into(),
             is_read_only: false,
@@ -250,6 +246,11 @@ impl JailedCracker {
         guest_name: &str,
         host_dev_name: &str,
     ) -> Result<()> {
+        trace!(
+            "Adding {} as network interface {} to firecracker",
+            host_dev_name,
+            guest_name
+        );
         let interface = NetworkInterface {
             host_dev_name: host_dev_name.into(),
             iface_id: guest_name.into(),
@@ -264,9 +265,11 @@ impl JailedCracker {
 
     pub async fn config_mmds(&mut self, guest_name: &str) -> Result<()> {
         let config = MmdsConfig {
+            ipv4_address: "169.254.169.254".into(),
             network_interfaces: vec![guest_name.into()],
             version: MmdsVersion::V2,
         };
+        trace!("Setting up FC MMDS on interface {}", guest_name);
         self.request_with_json("/mmds/config", Method::PUT, &config)
             .await
     }
@@ -274,12 +277,12 @@ impl JailedCracker {
     pub async fn set_boot(&mut self, kernel_img: &Path, boot_args: &str) -> Result<()> {
         let dest = self.root_path.join("kernel.img");
         //TODO: Mount this?
-        debug!("Copying kernel from {:?} to {:?}", kernel_img, dest);
+        trace!("Copying kernel from {:?} to {:?}", kernel_img, dest);
         std::fs::copy(kernel_img, &dest)?;
-        debug!("Chowning kernel to {}", self.uid);
+        trace!("Chowning kernel to {}", self.uid);
         std::os::unix::fs::chown(&dest, Some(self.uid), Some(self.uid))?;
 
-        debug!("Setting boot source to kernel.img in firecracker");
+        trace!("Setting boot source to kernel.img in firecracker");
         let boot_source = BootSource {
             kernel_image_path: "/kernel.img".into(),
             boot_args: boot_args.into(),

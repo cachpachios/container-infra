@@ -1,7 +1,5 @@
 mod firecracker;
 mod log;
 mod machine;
-mod networking;
-
 pub use machine::Machine;
-pub use machine::{FirecrackerConfig, MachineConfig};
+pub use machine::{MachineConfig, ManagerConfig};

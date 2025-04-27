@@ -1,28 +1,31 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use crate::machine::{firecracker, log::LogHandler};
-
-use super::{
-    firecracker::JailedCracker,
-    networking::{self, TunTap},
+use crate::{
+    machine::{firecracker, log::LogHandler},
+    networking::NetworkStack,
 };
+
+use super::firecracker::JailedCracker;
 use anyhow::Result;
+use log::trace;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 pub struct Machine {
     vm: JailedCracker,
     join_handle: tokio::task::JoinHandle<()>,
-    nic: TunTap,
+    network: NetworkStack,
     log: Arc<Mutex<LogHandler>>,
 }
 
 #[derive(Deserialize)]
-pub struct FirecrackerConfig {
+pub struct ManagerConfig {
     pub rootfs: PathBuf,
     pub kernel_image: PathBuf,
     pub jailer_binary: PathBuf,
     pub firecracker_binary: PathBuf,
+
+    pub public_network_interface: String,
 }
 
 pub struct MachineConfig {
@@ -32,7 +35,11 @@ pub struct MachineConfig {
 }
 
 impl Machine {
-    pub async fn new(fc_config: &FirecrackerConfig, config: MachineConfig) -> Result<Self> {
+    pub async fn new(
+        fc_config: &ManagerConfig,
+        config: MachineConfig,
+        network_stack: NetworkStack,
+    ) -> Result<Self> {
         #[derive(Serialize)]
         struct Container {
             image: String,
@@ -66,69 +73,23 @@ impl Machine {
 
         vm.set_machine_config(config.vcpu_count, config.mem_size_mb)
             .await?;
-        vm.set_boot(
-                &fc_config.kernel_image,
-                "console=ttyS0 quiet loglevel=1 reboot=k panic=-1 pci=off ip=172.16.0.2::172.16.0.1:255.255.255.252::eth0:off",
-            )
-            .await?;
+        let boot_args: String = format!(
+            "console=ttyS0 quiet loglevel=1 reboot=k panic=-1 pci=off ip={}::{}:{}::eth0:off",
+            network_stack.ipv4_addr(),
+            network_stack.gateway(),
+            network_stack.subnet_mask(),
+        );
+        trace!("Setting kernel boot args: {}", boot_args);
+        vm.set_boot(&fc_config.kernel_image, &boot_args).await?;
         vm.set_rootfs(&fc_config.rootfs).await?;
         vm.create_drive(8, "drive0").await?;
-
-        let tap = TunTap::new("tap0")?;
-        tap.add_address("172.16.0.1/30")?;
-        tap.up()?;
-        vm.set_eth_tap(&tap).await?;
-
-        let ours = "eno1";
-
-        networking::cmd(
-            "iptables-nft",
-            &[
-                "-t",
-                "nat",
-                "-A",
-                "POSTROUTING",
-                "-o",
-                ours,
-                "-s",
-                "172.16.0.2",
-                "-j",
-                "MASQUERADE",
-            ],
-        )?;
-        networking::cmd(
-            "iptables-nft",
-            &[
-                "-A",
-                "FORWARD",
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "RELATED,ESTABLISHED",
-                "-j",
-                "ACCEPT",
-            ],
-        )?;
-
-        networking::cmd(
-            "iptables-nft",
-            &[
-                "-A",
-                "FORWARD",
-                "-i",
-                tap.name(),
-                "-o",
-                ours,
-                "-j",
-                "ACCEPT",
-            ],
-        )?;
+        vm.set_eth_tap(network_stack.nic()).await?;
 
         let (log, jh) = LogHandler::spawn(out).await;
 
         let mut machine = Self {
             vm,
-            nic: tap,
+            network: network_stack,
             join_handle: jh,
             log,
         };
@@ -141,7 +102,7 @@ impl Machine {
         self.vm.uuid()
     }
 
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(mut self) -> NetworkStack {
         let _ = self.vm.request_stop().await;
 
         const MAX_WAIT: Duration = Duration::from_secs(3);
@@ -155,6 +116,7 @@ impl Machine {
             );
         }
         let _ = self.vm.cleanup();
+        self.network
     }
 
     pub async fn get_and_subscribe_to_logs(

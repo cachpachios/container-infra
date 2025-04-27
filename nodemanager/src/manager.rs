@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::path::Path;
 use std::pin::Pin;
-use std::sync::Arc;
 
+use log::debug;
+use log::error;
 use log::info;
 use log::warn;
 use proto::node::node_manager_server::NodeManager as NodeManagerService;
@@ -18,24 +18,26 @@ use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
-use tokio_stream::StreamExt;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
 
 use crate::machine;
 use crate::machine::Machine;
+use crate::networking::NetworkManager;
 
 pub struct NodeManager {
     machines: RwLock<HashMap<String, Machine>>,
-    fc_config: machine::FirecrackerConfig,
+    fc_config: machine::ManagerConfig,
+    network: Mutex<NetworkManager>,
 }
 
 impl NodeManager {
-    pub fn new(fc_config: machine::FirecrackerConfig) -> Self {
+    pub fn new(fc_config: machine::ManagerConfig) -> Self {
         NodeManager {
             machines: RwLock::new(HashMap::new()),
             fc_config,
+            network: Mutex::new(NetworkManager::new()),
         }
     }
 }
@@ -55,8 +57,22 @@ impl NodeManagerService for NodeManager {
             vcpu_count: request.vcpus as u8,
             mem_size_mb: request.memory_mb as u32,
         };
+        let mut network_stack = self.network.lock().await.provision_stack().map_err(|e| {
+            error!("Failed to create network stack: {}", e);
+            Status::internal("Failed to create network stack")
+        })?;
+        debug!(
+            "Network stack provision with local ip: {}",
+            network_stack.ipv4_addr()
+        );
+        network_stack
+            .setup_public_nat(&self.fc_config.public_network_interface)
+            .map_err(|e| {
+                error!("Failed to setup public NAT: {}", e);
+                Status::internal("Failed to setup public NAT")
+            })?;
 
-        let machine = Machine::new(&self.fc_config, machine_config)
+        let machine = Machine::new(&self.fc_config, machine_config, network_stack)
             .await
             .map_err(|e| {
                 info!("Failed to boot machine: {}", e);
@@ -79,7 +95,8 @@ impl NodeManagerService for NodeManager {
 
         if let Some(machine) = machine {
             info!("Deprovisioning node with id {}", &request.id);
-            machine.shutdown().await;
+            let network_stack = machine.shutdown().await;
+            self.network.lock().await.reclaim(network_stack);
             Ok(Response::new(Empty {}))
         } else {
             warn!(
@@ -156,9 +173,10 @@ impl NodeManagerService for NodeManager {
     async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
         let mut machines = self.machines.write().await;
         warn!("Draining all machines on node");
+        let mut network_manager = self.network.lock().await;
         for (id, machine) in machines.drain() {
             info!("Deprovisioning id {}", &id);
-            machine.shutdown().await;
+            network_manager.reclaim(machine.shutdown().await);
         }
         Ok(Response::new(Empty {}))
     }

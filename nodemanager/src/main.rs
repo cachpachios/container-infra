@@ -2,6 +2,7 @@ use manager::NodeManager;
 
 mod machine;
 mod manager;
+mod networking;
 
 fn main() {
     env_logger::init();
@@ -13,7 +14,7 @@ fn main() {
         .unwrap();
 
     let config = std::fs::read_to_string("config.json").expect("Unable to read config file");
-    let config: machine::FirecrackerConfig =
+    let config: machine::ManagerConfig =
         serde_json::from_str(&config).expect("Unable to parse config file");
 
     let manager = NodeManager::new(config);

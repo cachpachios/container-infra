@@ -10,7 +10,7 @@ use async_process::ChildStdout;
 
 const MAX_LINES: usize = 1000;
 const MAX_BYTES: usize = 1024 * 1024;
-const MAX_LINE_LENGTH: usize = 1024 * 4;
+const MAX_LINE_LENGTH: usize = 1024 * 8;
 
 struct LogBuf {
     buf: Vec<Option<String>>,
@@ -150,9 +150,9 @@ async fn stdout_handler(mut out: ChildStdout, handler: Arc<Mutex<LogHandler>>) {
                 } else {
                     pos += n;
                     if pos >= MAX_LINE_LENGTH - 1024 {
-                        const OVERFLOW: &[u8] = b"???";
+                        const OVERFLOW: &[u8] = b"???...???";
                         pos = MAX_LINE_LENGTH - 1024;
-                        buf[pos..].copy_from_slice(OVERFLOW);
+                        buf[pos..pos + OVERFLOW.len()].copy_from_slice(OVERFLOW);
                         pos += OVERFLOW.len();
                     }
                 }
