@@ -4,9 +4,10 @@ A project for running containers in microVMs (using Firecracker).
 
 ## Components
 
-- **nodemanager**: The main service that manages the lifecycle of microVMs and configures networking etc.
-- **nodeagent**: The init system that runs inside the microVM. It is responsible for fetching the container layers, setting up the environment and executing the container.
+- **nodemanager**: The main service that manages the lifecycle of microVMs and configures networking etc. Runs as a gRPC service.
+- **nodeagent**: The init system that runs inside each microVM. Responsible for fetching the container layers, setting up the environment and executing the container.
 - **nodecli**: A debug command line utility for interacting with the nodemanager service over gRPC.
+- **proto**: The protobuf definitions for the nodemanager gRPC service.
 
 ## Setting up development environment
 
