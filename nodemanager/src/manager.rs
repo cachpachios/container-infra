@@ -14,6 +14,7 @@ use proto::node::InstanceId;
 use proto::node::LogMessage;
 use proto::node::ProvisionRequest;
 use proto::node::ProvisionResponse;
+use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
@@ -27,9 +28,15 @@ use crate::machine;
 use crate::machine::Machine;
 use crate::networking::NetworkManager;
 
+#[derive(Deserialize)]
+pub struct ManagerConfig {
+    pub firecracker_config: machine::FirecrackerConfig,
+    pub public_network_interface: String,
+}
+
 struct InnerNodeManager {
+    config: ManagerConfig,
     machines: RwLock<HashMap<String, Machine>>,
-    fc_config: machine::ManagerConfig,
     network: Mutex<NetworkManager>,
 }
 
@@ -37,7 +44,7 @@ impl InnerNodeManager {
     async fn _provision(
         &self,
         request: ProvisionRequest,
-        self_clone: Arc<InnerNodeManager>,
+        self_clone: Arc<InnerNodeManager>, // Self reference for cleanup
     ) -> anyhow::Result<String> {
         let mut machines = self.machines.write().await;
 
@@ -51,7 +58,7 @@ impl InnerNodeManager {
             "Network stack provision with local ip: {}",
             network_stack.ipv4_addr()
         );
-        network_stack.setup_public_nat(&self.fc_config.public_network_interface)?;
+        network_stack.setup_public_nat(&self.config.public_network_interface)?;
 
         let mut overrides = machine::ContainerOverrides {
             cmd_args: None,
@@ -65,8 +72,13 @@ impl InnerNodeManager {
             overrides.env = Some(request.env.into_iter().collect());
         }
 
-        let (machine, machine_stop_rx) =
-            Machine::new(&self.fc_config, machine_config, network_stack, overrides).await?;
+        let (machine, machine_stop_rx) = Machine::new(
+            &self.config.firecracker_config,
+            machine_config,
+            network_stack,
+            overrides,
+        )
+        .await?;
         let uuid = machine.uuid().to_string();
         info!("Provisioned node {} ", &uuid);
         machines.insert(uuid.clone(), machine);
@@ -113,14 +125,14 @@ pub struct NodeManager {
 
 impl NodeManager {
     pub async fn new(
-        fc_config: machine::ManagerConfig,
+        fc_config: ManagerConfig,
     ) -> (
         Self,
         tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>,
     ) {
         let inner = Arc::new(InnerNodeManager {
             machines: RwLock::new(HashMap::new()),
-            fc_config,
+            config: fc_config,
             network: Mutex::new(NetworkManager::new()),
         });
         let (shutdown_tx, shutdown_rx) =

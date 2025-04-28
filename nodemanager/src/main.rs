@@ -1,4 +1,4 @@
-use manager::NodeManager;
+use manager::{ManagerConfig, NodeManager};
 
 mod machine;
 mod manager;
@@ -14,8 +14,7 @@ fn main() {
         .unwrap();
 
     let config = std::fs::read_to_string("config.json").expect("Unable to read config file");
-    let config: machine::ManagerConfig =
-        serde_json::from_str(&config).expect("Unable to parse config file");
+    let config: ManagerConfig = serde_json::from_str(&config).expect("Unable to parse config file");
 
     rt.block_on(async {
         let (manager, shutdown_tx) = NodeManager::new(config).await;

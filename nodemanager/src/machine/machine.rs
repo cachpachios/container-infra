@@ -18,16 +18,6 @@ pub struct Machine {
     log: Arc<Mutex<LogHandler>>,
 }
 
-#[derive(Deserialize)]
-pub struct ManagerConfig {
-    pub rootfs: PathBuf,
-    pub kernel_image: PathBuf,
-    pub jailer_binary: PathBuf,
-    pub firecracker_binary: PathBuf,
-
-    pub public_network_interface: String,
-}
-
 pub struct MachineConfig {
     pub container_reference: String,
     pub vcpu_count: u8,
@@ -39,9 +29,17 @@ pub struct ContainerOverrides {
     pub env: Option<BTreeMap<String, String>>,
 }
 
+#[derive(Deserialize)]
+pub struct FirecrackerConfig {
+    pub rootfs: PathBuf,
+    pub kernel_image: PathBuf,
+    pub jailer_binary: PathBuf,
+    pub firecracker_binary: PathBuf,
+}
+
 impl Machine {
     pub async fn new(
-        fc_config: &ManagerConfig,
+        fc_config: &FirecrackerConfig,
         config: MachineConfig,
         network_stack: NetworkStack,
         overrides: ContainerOverrides,
