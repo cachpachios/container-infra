@@ -8,6 +8,7 @@ use proto::node::ProvisionRequest;
 use proto::node::node_manager_client::NodeManagerClient;
 
 use clap::{Parser, Subcommand};
+use proto::node::PublishServicePortRequest;
 
 #[derive(Debug, Parser)]
 #[command(name = "nodecli")]
@@ -49,13 +50,24 @@ enum Commands {
     },
     #[command(arg_required_else_help = true)]
     Deprovision {
+        #[arg(help = "Instance UUID")]
         instance_id: String,
     },
     Log {
+        #[arg(help = "Instance UUID")]
         instance_id: String,
 
         #[arg(long, default_value_t = false)]
         tail: bool,
+    },
+    Publish {
+        #[arg(help = "Instance UUID")]
+        instance_id: String,
+
+        #[arg(help = "Port to publish on the host")]
+        host_port: u16,
+        #[arg(help = "Port to route to in the container")]
+        guest_port: u16,
     },
     Drain,
 }
@@ -143,6 +155,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                     .map_err(|e| error!("Failed to get logs for instance {}: {}", instance_id, e))
                     .ok();
+            }
+        }
+        Commands::Publish {
+            instance_id,
+            guest_port,
+            host_port,
+        } => {
+            let request = tonic::Request::new(PublishServicePortRequest {
+                id: instance_id.clone(),
+                guest_port: guest_port as i32,
+                host_port: host_port as i32,
+            });
+            let response = client.publish_service_port(request).await;
+            match response {
+                Ok(_) => info!(
+                    "Published port {} on instance {} to host port {}",
+                    guest_port, instance_id, host_port
+                ),
+                Err(e) => error!("Failed to publish port: {}", e),
             }
         }
         Commands::Drain => {

@@ -14,6 +14,7 @@ use proto::node::InstanceId;
 use proto::node::LogMessage;
 use proto::node::ProvisionRequest;
 use proto::node::ProvisionResponse;
+use proto::node::PublishServicePortRequest;
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -32,6 +33,7 @@ use crate::networking::NetworkManager;
 pub struct ManagerConfig {
     pub firecracker_config: machine::FirecrackerConfig,
     pub public_network_interface: String,
+    pub service_network_interface: String,
 }
 
 struct InnerNodeManager {
@@ -243,6 +245,47 @@ impl NodeManagerService for NodeManager {
                 .map(|s| LogMessage { message: s })
                 .collect(),
         }))
+    }
+
+    async fn publish_service_port(
+        &self,
+        request: Request<PublishServicePortRequest>,
+    ) -> Result<Response<Empty>, Status> {
+        let request = request.into_inner();
+        debug!("Publishing service port with request: {:?}", request);
+
+        let host_port = u16::try_from(request.host_port)
+            .map_err(|_| Status::invalid_argument("Invalid host port"))?;
+        let guest_port = u16::try_from(request.guest_port)
+            .map_err(|_| Status::invalid_argument("Invalid guest port"))?;
+
+        let machines = self.inner.machines.read().await;
+        let machine = match machines.get(&request.id) {
+            Some(machine) => machine,
+            None => {
+                warn!(
+                    "Requested publish port for missing machine with id {}",
+                    &request.id
+                );
+                return Err(Status::not_found("Machine not found"));
+            }
+        };
+
+        machine
+            .network()
+            .lock()
+            .await
+            .setup_forwarding(
+                &self.inner.config.service_network_interface,
+                host_port,
+                guest_port,
+            )
+            .map_err(|e| {
+                error!("Failed to publish service port: {}", e);
+                Status::internal("Failed to publish service port")
+            })?;
+
+        Ok(Response::new(Empty {}))
     }
 
     async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {

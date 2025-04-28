@@ -135,6 +135,97 @@ impl NetworkStack {
         Ok(())
     }
 
+    pub fn setup_forwarding(
+        &mut self,
+        inbound_if_name: &str,
+        inbound_port: u16,
+        guest_port: u16,
+    ) -> Result<()> {
+        let nic_name: String = self.nic.name().to_owned(); // Stupid borrow checker
+                                                           // DNAT outbound[host port] -> inbound[guest port]
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-A",
+                "PREROUTING",
+                "-t",
+                "nat",
+                "-i",
+                inbound_if_name,
+                "-p",
+                "tcp",
+                "--dport",
+                &inbound_port.to_string(),
+                "-j",
+                "DNAT",
+                "--to-destination",
+                &format!("{}:{}", self.ipv4_addr().to_string(), guest_port),
+            ],
+            "-D",
+        )?;
+        // SNAT inbound[guest port] -> outbound[host port]
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-A",
+                "POSTROUTING",
+                "-t",
+                "nat",
+                "-o",
+                nic_name.as_str(),
+                "-p",
+                "tcp",
+                "--dport",
+                &guest_port.to_string(),
+                "-j",
+                "MASQUERADE",
+            ],
+            "-D",
+        )?;
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-I",
+                "FORWARD",
+                "-i",
+                nic_name.as_str(),
+                "-o",
+                inbound_if_name,
+                "-p",
+                "tcp",
+                "--sport",
+                &guest_port.to_string(),
+                "-m",
+                "state",
+                "--state",
+                "ESTABLISHED,RELATED",
+                "-j",
+                "ACCEPT",
+            ],
+            "-D",
+        )?;
+        self.add_ip_rule_replace_first_arg(
+            &[
+                "-I",
+                "FORWARD",
+                "-i",
+                inbound_if_name,
+                "-o",
+                nic_name.as_str(),
+                "-p",
+                "tcp",
+                "--dport",
+                &guest_port.to_string(),
+                "-m",
+                "state",
+                "--state",
+                "NEW,ESTABLISHED,RELATED",
+                "-j",
+                "ACCEPT",
+            ],
+            "-D",
+        )?;
+
+        Ok(())
+    }
+
     pub fn ipv4_addr(&self) -> &Ipv4Addr {
         &self.ipv4_addr
     }

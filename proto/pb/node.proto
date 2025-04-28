@@ -28,12 +28,21 @@ message AllLogs {
     repeated LogMessage logs = 1;
 }
 
+message PublishServicePortRequest {
+    string id = 1;
+
+    int32 guest_port = 2;
+    int32 host_port = 3;
+}
+
 service NodeManager {
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
     rpc Deprovision (InstanceId) returns (Empty);
 
     rpc StreamLogs (InstanceId) returns (stream LogMessage);
     rpc GetLogs (InstanceId) returns (AllLogs);
+
+    rpc PublishServicePort (PublishServicePortRequest) returns (Empty);
 
     rpc Drain(Empty) returns (Empty);
 }

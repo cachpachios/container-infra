@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 pub struct Machine {
     vm: JailedCracker,
     join_handle: tokio::task::JoinHandle<()>,
-    network: NetworkStack,
+    network: Mutex<NetworkStack>,
     log: Arc<Mutex<LogHandler>>,
 }
 
@@ -99,7 +99,7 @@ impl Machine {
 
         let mut machine = Self {
             vm,
-            network: network_stack,
+            network: Mutex::new(network_stack),
             join_handle: jh,
             log,
         };
@@ -110,6 +110,10 @@ impl Machine {
 
     pub fn uuid(&self) -> &str {
         self.vm.uuid()
+    }
+
+    pub fn network(&self) -> &Mutex<NetworkStack> {
+        &self.network
     }
 
     pub async fn shutdown(mut self) -> NetworkStack {
@@ -126,7 +130,7 @@ impl Machine {
             );
         }
         let _ = self.vm.cleanup();
-        self.network
+        self.network.into_inner()
     }
 
     pub async fn get_and_subscribe_to_logs(

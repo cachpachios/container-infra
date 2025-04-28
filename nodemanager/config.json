@@ -5,5 +5,6 @@
         "kernel_image": "./target/vmlinux_6.1.102",
         "rootfs": "../nodeagent/target/rootfs.ext4"
     },
-    "public_network_interface": "eno1"
+    "public_network_interface": "eno1",
+    "service_network_interface": "eno1"
 }
