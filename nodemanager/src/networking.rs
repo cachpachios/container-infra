@@ -162,24 +162,24 @@ impl NetworkStack {
             ],
             "-D",
         )?;
-        // SNAT inbound[guest port] -> outbound[host port]
-        self.add_ip_rule_replace_first_arg(
-            &[
-                "-A",
-                "POSTROUTING",
-                "-t",
-                "nat",
-                "-o",
-                nic_name.as_str(),
-                "-p",
-                "tcp",
-                "--dport",
-                &guest_port.to_string(),
-                "-j",
-                "MASQUERADE",
-            ],
-            "-D",
-        )?;
+        // Optional: Masquerade traffic.
+        // self.add_ip_rule_replace_first_arg(
+        //     &[
+        //         "-A",
+        //         "POSTROUTING",
+        //         "-t",
+        //         "nat",
+        //         "-o",
+        //         nic_name.as_str(),
+        //         "-p",
+        //         "tcp",
+        //         "--dport",
+        //         &guest_port.to_string(),
+        //         "-j",
+        //         "MASQUERADE",
+        //     ],
+        //     "-D",
+        // )?;
         self.add_ip_rule_replace_first_arg(
             &[
                 "-I",

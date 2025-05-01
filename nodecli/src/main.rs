@@ -24,7 +24,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     #[command(arg_required_else_help = true)]
-    Provision {
+    Run {
         container_reference: String,
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=32), help="Number of vCPUs to provision, max 32.")]
         vcpus: u8,
@@ -49,18 +49,18 @@ enum Commands {
         args: Vec<String>,
     },
     #[command(arg_required_else_help = true)]
-    Deprovision {
+    Rm {
         #[arg(help = "Instance UUID")]
         instance_id: String,
     },
-    Log {
+    Logs {
         #[arg(help = "Instance UUID")]
         instance_id: String,
 
         #[arg(long, default_value_t = false)]
         tail: bool,
     },
-    Publish {
+    Pub {
         #[arg(help = "Instance UUID")]
         instance_id: String,
 
@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         NodeManagerClient::connect(cli.address.unwrap_or("http://[::1]:50051".to_string())).await?;
 
     match cli.command {
-        Commands::Provision {
+        Commands::Run {
             container_reference,
             vcpus,
             memory_mb,
@@ -128,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => error!("Failed to provision instance: {}", e),
             }
         }
-        Commands::Deprovision { instance_id } => {
+        Commands::Rm { instance_id } => {
             let request = tonic::Request::new(InstanceId {
                 id: instance_id.clone(),
             });
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => error!("Failed to deprovision instance: {}", e),
             }
         }
-        Commands::Log { instance_id, tail } => {
+        Commands::Logs { instance_id, tail } => {
             if tail {
                 stream_logs(&mut client, instance_id.clone()).await;
             } else {
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ok();
             }
         }
-        Commands::Publish {
+        Commands::Pub {
             instance_id,
             guest_port,
             host_port,
