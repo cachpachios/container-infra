@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use oci_spec::image::{Arch, Descriptor, ImageConfiguration, ImageManifest, MediaType, Os};
+use oci_spec::image::{
+    Arch, Descriptor, DescriptorBuilder, ImageConfiguration, ImageManifest, ImageManifestBuilder,
+    MediaType, Os,
+};
 use oci_spec::{distribution::Reference, image::ImageIndex};
 use reqwest::blocking::Client;
 use serde::Deserialize;
@@ -8,11 +11,17 @@ use serde::Deserialize;
 #[derive(Debug)]
 pub enum RegistryErrors {
     NetworkError,
+    RegistryResponseError,
     NoCompatibleImageAvailable,
-    UnableToParse,
+    UnsupportedRegistryImageFormat,
+    UnableToParseImageIndex,
+    UnableToParseImageManifest,
+    UnableToParseImageConfiguration,
     AuthenticationError,
     IOErr,
 }
+
+const SUPPORTED_ARCH: Arch = Arch::Amd64; //TODO: Arm64?
 
 pub fn get_manifest_and_config(
     reference: &Reference,
@@ -24,28 +33,54 @@ pub fn get_manifest_and_config(
         reference.repository(),
         reference.tag().unwrap_or("latest"),
     );
-    let req = get(&index_url, auth_token)?;
-    let index: ImageIndex = req.json().map_err(|_| RegistryErrors::UnableToParse)?;
+    log::debug!("Pulling index from {}", index_url);
+    let index_data: serde_json::Value = get(&index_url, auth_token)?.json().map_err(|e| {
+        log::debug!("Image index response is not JSON: {:?}", e);
+        RegistryErrors::UnableToParseImageIndex
+    })?;
 
-    let compatible_manifest = index
-        .manifests()
-        .iter()
-        .find(|d| {
-            d.platform().as_ref().map_or(false, |p| {
-                *p.architecture() == Arch::Amd64 && *p.os() == Os::Linux
+    let schema_version = index_data
+        .get("schemaVersion")
+        .and_then(|v| v.as_u64().map(|v| v as u32));
+
+    let manifest = match schema_version {
+        Some(oci_spec::image::SCHEMA_VERSION) => {
+            let index: ImageIndex = serde_json::from_value(index_data).map_err(|e| {
+                log::debug!("UnableToParseImageIndex: {:?}", e);
+                RegistryErrors::UnableToParseImageIndex
+            })?;
+
+            let compatible_manifest = index
+                .manifests()
+                .iter()
+                .find(|d| {
+                    d.platform().as_ref().map_or(false, |p| {
+                        *p.architecture() == SUPPORTED_ARCH && *p.os() == Os::Linux
+                    })
+                })
+                .ok_or(RegistryErrors::NoCompatibleImageAvailable)?;
+
+            let manifest_url = format!(
+                "https://{}/v2/{}/manifests/{}",
+                reference.resolve_registry(),
+                reference.repository(),
+                compatible_manifest.digest()
+            );
+            log::debug!("Pulling manifest from {}", manifest_url);
+            ImageManifest::from_reader(get(&manifest_url, auth_token)?).map_err(|e| {
+                log::debug!("UnableToParseImageManifest: {:?}", e);
+                RegistryErrors::UnableToParseImageManifest
             })
-        })
-        .ok_or(RegistryErrors::NoCompatibleImageAvailable)?;
-
-    let manifest_url = format!(
-        "https://{}/v2/{}/manifests/{}",
-        reference.resolve_registry(),
-        reference.repository(),
-        compatible_manifest.digest()
-    );
-
-    let manifest: ImageManifest = ImageManifest::from_reader(get(&manifest_url, auth_token)?)
-        .map_err(|_| RegistryErrors::UnableToParse)?;
+        }
+        Some(v) => {
+            log::error!("Unsupported image format, version {}.", v);
+            Err(RegistryErrors::UnsupportedRegistryImageFormat)
+        }
+        None => {
+            log::debug!("No schema version found");
+            Err(RegistryErrors::UnableToParseImageIndex)
+        }
+    }?;
 
     let config_url = format!(
         "https://{}/v2/{}/blobs/{}",
@@ -53,10 +88,12 @@ pub fn get_manifest_and_config(
         reference.repository(),
         manifest.config().digest()
     );
-    let config_resp = get(&config_url, auth_token)?;
-    let config: ImageConfiguration =
-        ImageConfiguration::from_reader(config_resp).map_err(|_| RegistryErrors::UnableToParse)?;
-
+    log::debug!("Pulling config from {}", config_url);
+    let config: ImageConfiguration = ImageConfiguration::from_reader(get(&config_url, auth_token)?)
+        .map_err(|e| {
+            log::debug!("UnableToParseImageConfiguration: {:?}", e);
+            RegistryErrors::UnableToParseImageConfiguration
+        })?;
     Ok((manifest, config))
 }
 
@@ -121,6 +158,8 @@ pub fn docker_io_oauth(
     }
     let resp: TokenResponse = resp.json().map_err(|e| e.to_string())?;
 
+    log::debug!("Obtained anono docker.io token: {}", resp.token);
+
     Ok(resp.token)
 }
 
@@ -135,10 +174,10 @@ fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Respons
         Ok(resp)
     } else {
         log::error!(
-            "Repository GET failed: {} - {}",
+            "Container repository GET failed: {} - {}",
             resp.status(),
             resp.text().unwrap_or_default()
         );
-        Err(RegistryErrors::NetworkError)
+        Err(RegistryErrors::RegistryResponseError)
     }
 }

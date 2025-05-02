@@ -15,7 +15,7 @@ Each folder contains a separate component of the project. The components are:
 
 You can only run and develop this on a Linux system with KVM virtualization enabled. For MacOS or Windows you need a virtualized environment with **nested virtualization enabled**. Verify this by checking if `/dev/kvm` exists in your VM.
 
-NOTE: Currently only x86_64 is supported. However ARM64 shouldnt be any large issue, but `makefs.sh` goes for x86 to build/download the `nodeagent`, `busybox`, `mkefs2` and `crun` for ARM64. 
+NOTE: Currently only x86_64 is supported. However ARM64 shouldnt be any large issue, but `makefs.sh` goes for x86 to build/download the `nodeagent`, `busybox`, `mkefs2` and `crun`. 
 Will probably add arm64 support myself at some point for running using nested virtualization on apple silicon.
 
 Run `./setup_dev_ubuntu.sh`. It should be enough on Ubuntu 24.04.

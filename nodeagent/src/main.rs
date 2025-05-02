@@ -4,9 +4,10 @@ use std::{
     io::Write,
     panic::PanicHookInfo,
     process::{Command, Stdio},
+    thread::sleep,
 };
 
-use libc::reboot;
+use libc::{reboot, sync};
 use oci_spec::distribution::Reference;
 
 mod containers;
@@ -53,7 +54,14 @@ fn main() {
     let container_config: ContainerConfig = mmds
         .get("/latest/container")
         .expect("Unable to get container config");
-    let reference = Reference::try_from(container_config.image).expect("Unable to parse reference");
+    let reference = match Reference::try_from(container_config.image) {
+        Ok(reference) => reference,
+        Err(e) => {
+            log::error!("Unable to parse container image reference: {}", e);
+            shutdown();
+            return;
+        }
+    };
 
     let rt_overrides = crate::containers::rt::RuntimeOverrides {
         additional_args: container_config.cmd_args,
@@ -61,7 +69,11 @@ fn main() {
         terminal: false,
     };
 
-    containers::pull_and_prepare_image(reference, &rt_overrides).expect("Unable to pull image");
+    if let Err(r) = containers::pull_and_prepare_image(reference, &rt_overrides) {
+        log::error!("Unable to pull and extract container image: {:?}", r);
+        shutdown();
+        return;
+    }
 
     log::info!("Running container...");
     log::debug!("Runtime overrides: {:?}", rt_overrides);
@@ -100,8 +112,14 @@ fn flush_buffers() {
 }
 
 fn shutdown() {
+    log::info!("Shutting down...");
     flush_buffers();
+    if cfg!(debug_assertions) {
+        // Sleep to ensure logs are flushed
+        sleep(std::time::Duration::from_millis(100));
+    }
     unsafe {
+        sync();
         reboot(libc::LINUX_REBOOT_CMD_RESTART);
         std::process::exit(1);
     };

@@ -699,6 +699,7 @@ dependencies = [
  "oci-spec",
  "reqwest",
  "serde",
+ "serde_json",
  "simple_logger",
  "tar",
 ]

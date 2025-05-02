@@ -16,6 +16,7 @@ fn mke2fs(args: &[&str]) {
 
     if !output.status.success() {
         log::error!("Command failed with status: {}", output.status);
+        panic!("Unable to create filesystem.");
     } else {
         log::debug!("Command succeeded: {}", output.status);
     }
