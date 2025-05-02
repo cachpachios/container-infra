@@ -17,7 +17,9 @@ fn main() {
     let config: ManagerConfig = serde_json::from_str(&config).expect("Unable to parse config file");
 
     rt.block_on(async {
-        let (manager, shutdown_tx) = NodeManager::new(config).await;
+        let (manager, shutdown_tx) = NodeManager::new(config)
+            .await
+            .expect("Unable to create NodeManager");
 
         tokio::spawn(async move {
             manager::serve(manager)

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use anyhow::Result;
 use log::debug;
 use log::error;
 use log::info;
@@ -128,14 +129,14 @@ pub struct NodeManager {
 impl NodeManager {
     pub async fn new(
         fc_config: ManagerConfig,
-    ) -> (
+    ) -> Result<(
         Self,
         tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>,
-    ) {
+    )> {
         let inner = Arc::new(InnerNodeManager {
             machines: RwLock::new(HashMap::new()),
             config: fc_config,
-            network: Mutex::new(NetworkManager::new()),
+            network: Mutex::new(NetworkManager::new()?),
         });
         let (shutdown_tx, shutdown_rx) =
             tokio::sync::oneshot::channel::<tokio::sync::oneshot::Sender<()>>();
@@ -151,7 +152,7 @@ impl NodeManager {
             }
         });
 
-        (NodeManager { inner }, shutdown_tx)
+        Ok((NodeManager { inner }, shutdown_tx))
     }
 }
 
