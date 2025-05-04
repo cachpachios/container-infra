@@ -27,10 +27,9 @@ const DEFAULT_CAPS: &[Capability] = &[
 ];
 
 const DEFAULT_NAMESPACES: &[LinuxNamespaceType] = &[
-    // LinuxNamespaceType::User, //TODO: Enable this when network ns is enabled
+    LinuxNamespaceType::User,
     LinuxNamespaceType::Mount,
     LinuxNamespaceType::Pid,
-    // LinuxNamespaceType::Network, // TODO: Enable this and route correctly...
     LinuxNamespaceType::Ipc,
     LinuxNamespaceType::Uts,
     LinuxNamespaceType::Cgroup,
@@ -108,6 +107,7 @@ pub fn create_runtime_spec(
         .terminal(overrides.terminal)
         .env(env)
         .capabilities(caps)
+        .no_new_privileges(false)
         .args(args);
 
     let root = RootBuilder::default()

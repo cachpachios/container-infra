@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::sh::cmd;
 
 fn mke2fs(args: &[&str]) {
@@ -60,4 +62,12 @@ pub fn init() {
     log::debug!("Enabling signal based Ctrl-Alt-Del");
     std::fs::write("/proc/sys/kernel/ctrl-alt-del", b"0")
         .expect("Unable to write to /proc/sys/kernel/ctrl-alt-del");
+
+    // Enabling low level ports to be bound without root
+    log::debug!("Enabling low level ports to be bound without root");
+    cmd(&["sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=0"]);
+
+    // Enabling IP forwarding
+    log::debug!("Enabling IP forwarding");
+    cmd(&["sysctl", "-w", "net.ipv4.ip_forward=1"]);
 }

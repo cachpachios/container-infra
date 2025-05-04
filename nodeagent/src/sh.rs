@@ -1,6 +1,9 @@
 pub fn cmd(cmd: &[&str]) {
     let output = std::process::Command::new("/sbin/busybox")
         .args(cmd)
+        .stderr(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
         .spawn()
         .expect("Failed to start command");
 
@@ -10,7 +13,8 @@ pub fn cmd(cmd: &[&str]) {
         .expect("Failed to wait on command");
 
     if !output.status.success() {
-        log::error!("Command failed with status: {}", output.status);
+        log::error!("Command {:?} failed with status: {}", cmd, output.status);
+        panic!("Command failed: {:?}", cmd);
     } else {
         log::debug!("Command succeeded: {}", output.status);
     }

@@ -1,9 +1,6 @@
 use std::path::Path;
 
-use oci_spec::image::{
-    Arch, Descriptor, DescriptorBuilder, ImageConfiguration, ImageManifest, ImageManifestBuilder,
-    MediaType, Os,
-};
+use oci_spec::image::{Arch, Descriptor, ImageConfiguration, ImageManifest, MediaType, Os};
 use oci_spec::{distribution::Reference, image::ImageIndex};
 use reqwest::blocking::Client;
 use serde::Deserialize;
