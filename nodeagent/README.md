@@ -5,13 +5,13 @@ Its responsible for fetching the container layers, setting up the environment an
 Except the statically linked nodeagent under `/sbin/init` it also comes with `busybox`, `mkfs.ext4` and `crun`.
 
 
-## Build just the nodeagent
-```bash
-rustup target add x86_64-unknown-linux-musl
-cargo build --target=x86_64-unknown-linux-musl
-```
+## Build just the nodeagent init program
 
-Note: Use the `makefs.sh` to build a full minimalistic rootfs for use in the VMs.
+Note: Use the `makefs.sh` to build a full minimalistic rootfs for use in the VMs. It will ask for root to loopback mount the image.
+```bash
+./makefs.sh
+```
+This will create `target/rootfs.ext4` which can be used as the rootfs for the VM.
 
 ## Dev dependencies
 
