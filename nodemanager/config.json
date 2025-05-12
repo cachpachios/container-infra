@@ -6,5 +6,6 @@
         "rootfs": "../nodeagent/target/rootfs.ext4"
     },
     "public_network_interface": "eno1",
-    "service_network_interface": "eno1"
+    "service_network_interface": "eno1",
+    "enrollment_host": "http://localhost:8080"
 }

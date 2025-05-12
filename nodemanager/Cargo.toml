@@ -18,4 +18,6 @@ futures-lite = "2.6.0"
 proto = { path = "../proto"}
 tonic = "0.13.0"
 tokio-stream = "0.1.17"
+hmac = "0.12.1"
+sha2 = "0.10.9"
 

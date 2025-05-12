@@ -3,10 +3,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::Result;
+use hmac::Mac;
 use log::debug;
 use log::error;
 use log::info;
 use log::warn;
+use proto::auth as proto_auth;
 use proto::node::node_manager_server::NodeManager as NodeManagerService;
 use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceServer;
 use proto::node::AllLogs;
@@ -22,9 +24,13 @@ use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
+use tonic::metadata::MetadataMap;
 use tonic::Request;
 use tonic::Response;
 use tonic::Status;
+
+use hmac::Hmac;
+use sha2::Sha256;
 
 use crate::machine;
 use crate::machine::Machine;
@@ -124,18 +130,20 @@ impl InnerNodeManager {
 
 pub struct NodeManager {
     inner: Arc<InnerNodeManager>,
+    authentication_secret: Option<Hmac<Sha256>>,
 }
 
 impl NodeManager {
     pub async fn new(
-        fc_config: ManagerConfig,
+        config: ManagerConfig,
+        authentication_secret: Option<&[u8]>,
     ) -> Result<(
         Self,
         tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>,
     )> {
         let inner = Arc::new(InnerNodeManager {
             machines: RwLock::new(HashMap::new()),
-            config: fc_config,
+            config,
             network: Mutex::new(NetworkManager::new()?),
         });
         let (shutdown_tx, shutdown_rx) =
@@ -152,7 +160,36 @@ impl NodeManager {
             }
         });
 
-        Ok((NodeManager { inner }, shutdown_tx))
+        Ok((
+            NodeManager {
+                inner,
+                authentication_secret: authentication_secret
+                    .map(|s| Hmac::new_from_slice(s).expect("Inavlid secret key.")),
+            },
+            shutdown_tx,
+        ))
+    }
+
+    fn validate_auth(
+        &self,
+        metadata: &MetadataMap,
+        expected_audience: Option<&str>,
+    ) -> Result<(), Status> {
+        let secret = match self.authentication_secret {
+            Some(ref secret) => secret,
+            None => return Ok(()),
+        };
+        if !proto_auth::validate_authentication(
+            metadata
+                .get("auth")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or(""),
+            secret,
+            expected_audience,
+        ) {
+            return Err(Status::unauthenticated("Invalid authentication token"));
+        }
+        Ok(())
     }
 }
 
@@ -162,6 +199,7 @@ impl NodeManagerService for NodeManager {
         &self,
         request: Request<ProvisionRequest>,
     ) -> Result<Response<ProvisionResponse>, Status> {
+        self.validate_auth(request.metadata(), None)?;
         let request = request.into_inner();
         debug!("Provisioning machine with request: {:?}", request);
         let id = self
@@ -176,6 +214,7 @@ impl NodeManagerService for NodeManager {
     }
 
     async fn deprovision(&self, request: Request<InstanceId>) -> Result<Response<Empty>, Status> {
+        self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
         let request = request.into_inner();
 
         self.inner._deprovision(&request.id).await.map_err(|e| {
@@ -191,6 +230,7 @@ impl NodeManagerService for NodeManager {
         &self,
         request: Request<InstanceId>,
     ) -> Result<Response<Self::StreamLogsStream>, Status> {
+        self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
         let request = request.into_inner();
         let machines = self.inner.machines.read().await;
         let machine = match machines.get(&request.id) {
@@ -228,6 +268,7 @@ impl NodeManagerService for NodeManager {
     }
 
     async fn get_logs(&self, request: Request<InstanceId>) -> Result<Response<AllLogs>, Status> {
+        self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
         let request = request.into_inner();
         let machines = self.inner.machines.read().await;
         let machine = match machines.get(&request.id) {
@@ -252,6 +293,7 @@ impl NodeManagerService for NodeManager {
         &self,
         request: Request<PublishServicePortRequest>,
     ) -> Result<Response<Empty>, Status> {
+        self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
         let request = request.into_inner();
         debug!("Publishing service port with request: {:?}", request);
 
@@ -289,7 +331,8 @@ impl NodeManagerService for NodeManager {
         Ok(Response::new(Empty {}))
     }
 
-    async fn drain(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
+    async fn drain(&self, request: Request<Empty>) -> Result<Response<Empty>, Status> {
+        self.validate_auth(request.metadata(), None)?;
         warn!("Draining all machines on node");
         self.inner._drain().await.map_err(|e| {
             error!("Failed to drain node: {}", e);

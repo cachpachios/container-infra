@@ -1,8 +1,4 @@
-use manager::{ManagerConfig, NodeManager};
-
-mod machine;
-mod manager;
-mod networking;
+use nodemanager::manager::{serve, ManagerConfig, NodeManager};
 
 fn main() {
     env_logger::init();
@@ -17,15 +13,11 @@ fn main() {
     let config: ManagerConfig = serde_json::from_str(&config).expect("Unable to parse config file");
 
     rt.block_on(async {
-        let (manager, shutdown_tx) = NodeManager::new(config)
+        let (manager, shutdown_tx) = NodeManager::new(config, None)
             .await
             .expect("Unable to create NodeManager");
 
-        tokio::spawn(async move {
-            manager::serve(manager)
-                .await
-                .expect("Unable to start server")
-        });
+        tokio::spawn(async move { serve(manager).await.expect("Unable to start server") });
 
         tokio::signal::ctrl_c()
             .await
