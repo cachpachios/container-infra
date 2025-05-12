@@ -22,4 +22,4 @@ sudo sysctl -w net.ipv4.ip_forward=1
 ```
 
 HOWEVER! For enabling NAT for the VMs check if the interface on your host is the same as in the `config.json` file.
-You can use `ip a` to check the interface name. I.e if you are on a laptop with wifi...
+You can use `ip a` to check the interface name.
