@@ -12,12 +12,14 @@ fn main() {
     let config = std::fs::read_to_string("config.json").expect("Unable to read config file");
     let config: ManagerConfig = serde_json::from_str(&config).expect("Unable to parse config file");
 
+    let addr = "[::1]:50051".parse().expect("Unable to parse address");
+
     rt.block_on(async {
         let (manager, shutdown_tx) = NodeManager::new(config, None)
             .await
             .expect("Unable to create NodeManager");
 
-        tokio::spawn(async move { serve(manager).await.expect("Unable to start server") });
+        tokio::spawn(async move { serve(manager, addr).await.expect("Unable to start server") });
 
         tokio::signal::ctrl_c()
             .await

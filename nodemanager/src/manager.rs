@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -342,9 +343,10 @@ impl NodeManagerService for NodeManager {
     }
 }
 
-pub async fn serve(manager: NodeManager) -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
-
+pub async fn serve(
+    manager: NodeManager,
+    addr: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
     let server = NodeManagerServiceServer::new(manager);
     info!("NodeManager server listening on {}", addr);
     tonic::transport::Server::builder()
