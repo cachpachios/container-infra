@@ -15,6 +15,7 @@ use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceSer
 use proto::node::AllLogs;
 use proto::node::Empty;
 use proto::node::InstanceId;
+use proto::node::InstanceList;
 use proto::node::LogMessage;
 use proto::node::ProvisionRequest;
 use proto::node::ProvisionResponse;
@@ -266,6 +267,19 @@ impl NodeManagerService for NodeManager {
         Ok(Response::new(
             Box::pin(output_stream) as Self::StreamLogsStream
         ))
+    }
+
+    async fn list_instances(
+        &self,
+        request: Request<Empty>,
+    ) -> Result<Response<InstanceList>, Status> {
+        self.validate_auth(request.metadata(), None)?;
+        let machines = self.inner.machines.read().await;
+        let instances = machines
+            .iter()
+            .map(|(id, _)| InstanceId { id: id.clone() })
+            .collect::<Vec<_>>();
+        Ok(Response::new(InstanceList { instances }))
     }
 
     async fn get_logs(&self, request: Request<InstanceId>) -> Result<Response<AllLogs>, Status> {

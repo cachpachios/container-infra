@@ -20,6 +20,10 @@ message InstanceId {
     string id = 1;
 }
 
+message InstanceList {
+    repeated InstanceId instances = 1;
+}
+
 message LogMessage {
     string message = 1;
 }
@@ -38,6 +42,7 @@ message PublishServicePortRequest {
 service NodeManager {
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
     rpc Deprovision (InstanceId) returns (Empty);
+    rpc ListInstances (Empty) returns (InstanceList);
 
     rpc StreamLogs (InstanceId) returns (stream LogMessage);
     rpc GetLogs (InstanceId) returns (AllLogs);

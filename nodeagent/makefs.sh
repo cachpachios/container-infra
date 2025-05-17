@@ -38,7 +38,7 @@ if [ ! -f target/mke2fs ]; then
     wget -O target/e2fsprogs-1.47.1.tar.gz https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.gz
     tar -xzf target/e2fsprogs-1.47.1.tar.gz -C target
     cd target/e2fsprogs-1.47.1
-    ./configure CFLAGS='-g -static -O2 -no-pie' LDFLAGS="-static"
+    ./configure CFLAGS='-g -static -O2 -no-pie -D_FILE_OFFSET_BITS=64' LDFLAGS="-static"
     make -j$(nproc)
     cd ../..
     cp target/e2fsprogs-1.47.1/misc/mke2fs target/mke2fs

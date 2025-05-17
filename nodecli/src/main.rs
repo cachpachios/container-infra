@@ -53,6 +53,8 @@ enum Commands {
         #[arg(help = "Instance UUID")]
         instance_id: String,
     },
+    #[command(arg_required_else_help = false)]
+    Ls,
     Logs {
         #[arg(help = "Instance UUID")]
         instance_id: String,
@@ -136,6 +138,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match response {
                 Ok(_) => info!("Deprovisioned instance with id {}", instance_id),
                 Err(e) => error!("Failed to deprovision instance: {}", e),
+            }
+        }
+        Commands::Ls => {
+            let request = tonic::Request::new(Empty {});
+            let response = client.list_instances(request).await;
+            match response {
+                Ok(res) => {
+                    let instances = res.into_inner().instances;
+                    for instance in instances {
+                        println!("{}", instance.id);
+                    }
+                }
+                Err(e) => error!("Failed to list instances: {}", e),
             }
         }
         Commands::Logs { instance_id, tail } => {
