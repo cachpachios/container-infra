@@ -57,6 +57,11 @@ pub fn sign_token(secret: &Hmac<Sha256>, audience: Option<String>) -> String {
     claims.sign_with_key(secret).unwrap()
 }
 
+pub fn sign_token_bytes(secret: &[u8], audience: Option<String>) -> String {
+    let secret = Hmac::<Sha256>::new_from_slice(secret).expect("Wtf. Sha256 is lenght independent");
+    sign_token(&secret, audience)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
