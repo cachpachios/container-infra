@@ -6,6 +6,13 @@ use jwt::SignWithKey;
 use jwt::VerifyWithKey;
 use sha2::Sha256;
 
+fn unix_t_s() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
 pub fn validate_authentication(
     token: &str,
     secret: &Hmac<Sha256>,
@@ -15,16 +22,13 @@ pub fn validate_authentication(
         Ok(claims) => claims,
         Err(_) => return false,
     };
-
     if expected_audience != claims.registered.audience.as_deref() {
         return false;
     }
 
-    let unix_t_s = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let unix_t_s = unix_t_s();
 
+    // Note: We do not accept a token without expiration (since unix_t_s > 0)
     unix_t_s < claims.registered.expiration.unwrap_or(0)
         && unix_t_s > claims.registered.not_before.unwrap_or(0)
 }
@@ -39,18 +43,14 @@ pub fn validate_authentication_secrets_as_bytes(
 }
 
 pub fn sign_token(secret: &Hmac<Sha256>, audience: Option<String>) -> String {
-    let unix_t_s = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
+    let unix_t_s = unix_t_s();
     let claims = Claims::new(RegisteredClaims {
         issuer: None,
         audience: audience,
         expiration: Some(unix_t_s + 60 * 60),
         subject: None,
         not_before: Some(unix_t_s - 60),
-        issued_at: None,
+        issued_at: Some(unix_t_s),
         json_web_token_id: None,
     });
 
