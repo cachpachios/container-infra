@@ -38,7 +38,7 @@ if [ ! -f nodemanager/target/vmlinux_6.1.102 ]; then
 fi
 
 echo Consturcting the rootfs...
-./nodeagent/makefs.sh
+./instance/makefs.sh
 
 echo You are now redy to start a nodemanager.
 

@@ -636,6 +636,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "instance"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "libc",
+ "log",
+ "oci-spec",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "simple_logger",
+ "tar",
+ "vmproto",
+ "vsock",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -750,24 +768,6 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
-]
-
-[[package]]
-name = "nodeagent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "flate2",
- "libc",
- "log",
- "oci-spec",
- "reqwest",
- "serde",
- "serde_json",
- "simple_logger",
- "tar",
- "vmproto",
- "vsock",
 ]
 
 [[package]]

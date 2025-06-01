@@ -1,11 +1,11 @@
-# NodeAgent
+# Instance
 
-The nodeagent is the program that runs inside the VM (as its init system).
+The instance is the program that runs inside the VM (as its init program (PID=0)).
 Its responsible for fetching the container layers, setting up the environment and executing the container.
-Except the statically linked nodeagent under `/sbin/init` it also comes with `busybox`, `mkfs.ext4` and `crun`.
 
+The filesystem requires the statically linked instance binary at `/sbin/init` but also `busybox` for some lightweight system operations (might be replaced in the future), `mkfs.ext4` for constructing a FS for the container and `crun` for running the container.
 
-## Build just the nodeagent init program
+## Build just the instance init program
 
 Note: Use the `makefs.sh` to build a full minimalistic rootfs for use in the VMs. It will ask for root to loopback mount the image.
 ```bash
@@ -24,11 +24,12 @@ Tip: Just use the `../setup_dev_ubuntu.sh` script.
 
 ## Constructing the full rootfs
 
-This will create a full rootfs with the `nodeagent`, `busybox`, `crun` and `mkfs.ext4` and some small expected configuration files.
+This will create a full rootfs with the `instance`, `busybox`, `crun` and `mkfs.ext4` and some small expected configuration files.
 
 ```bash
 ./makefs.sh
 ```
+
 It will ask for sudo to be able to mount the image on a temp folder while writing it.
 It also fetches `busybox` and `crun` and builds `e2fsprogs`.
 

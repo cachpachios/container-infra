@@ -3,7 +3,7 @@
         "firecracker_binary": "./target/firecracker/release-v1.11.0-x86_64/firecracker-v1.11.0-x86_64",
         "jailer_binary": "./target/firecracker/release-v1.11.0-x86_64/jailer-v1.11.0-x86_64",
         "kernel_image": "./target/vmlinux_6.1.102",
-        "rootfs": "../nodeagent/target/rootfs.ext4"
+        "rootfs": "../instance/target/rootfs.ext4"
     },
     "public_network_interface": "eno1",
     "service_network_interface": "eno1"

@@ -1,6 +1,6 @@
 # NodeManager
 
-Use the `setup_dev_ubuntu.sh` script. It will download firecracker, a linux kernel image, and construct the nodeagent rootfs.
+Use the `setup_dev_ubuntu.sh` script. It will download firecracker, a linux kernel image, and construct the instance rootfs.
 
 Then build and run like this:
 ```bash
