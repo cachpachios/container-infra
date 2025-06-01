@@ -1,4 +1,4 @@
-use oci_spec::distribution::Reference;
+use oci_spec::{distribution::Reference, runtime::Spec};
 use rt::RuntimeOverrides;
 
 pub mod fs;
@@ -8,7 +8,7 @@ pub mod rt;
 pub fn pull_and_prepare_image(
     reference: Reference,
     overrides: &RuntimeOverrides,
-) -> Result<(), registry::RegistryErrors> {
+) -> Result<Spec, registry::RegistryErrors> {
     log::info!("Pulling container image: {}", reference.whole(),);
 
     let mut auth: Option<String> = None;
@@ -84,5 +84,5 @@ pub fn pull_and_prepare_image(
 
     log::info!("Image pulled and extracted successfully.");
 
-    Ok(())
+    Ok(spec)
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use async_process::{Child, ChildStdout, Command};
+use async_process::{Child, Command};
 use http_client_unix_domain_socket::{ClientUnix, Method};
 use log::{debug, trace};
 use serde::Serialize;
@@ -169,6 +169,7 @@ impl JailedCracker {
         &self.uuid
     }
 
+    #[allow(dead_code)] // Not needed right now since we use vsock to request graceful shutdown
     pub async fn request_stop(&mut self) -> Result<()> {
         debug!("Sending CtrlAltDelete firecracker instance {}", self.uuid);
         self.request_with_json(

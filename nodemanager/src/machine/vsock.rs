@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use circular_buffer::CircularBuffer;
 use tokio::{
-    io::AsyncReadExt,
-    net::UnixStream,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{
+        unix::{OwnedReadHalf, OwnedWriteHalf, WriteHalf},
+        UnixStream,
+    },
     sync::{
         mpsc::{Receiver, Sender},
         Mutex,
@@ -14,6 +17,7 @@ use vmproto::guest::LogMessage;
 const MAX_LINES_IN_BUFFER: usize = 256;
 
 pub struct MachineCommunicator {
+    stream: OwnedWriteHalf,
     log_subscribers: Vec<Sender<Arc<LogMessage>>>,
     log_buffer: CircularBuffer<MAX_LINES_IN_BUFFER, Arc<LogMessage>>,
 }
@@ -23,12 +27,15 @@ impl MachineCommunicator {
         stream: UnixStream,
         stop_handler: tokio::sync::oneshot::Sender<()>,
     ) -> (Arc<Mutex<MachineCommunicator>>, tokio::task::JoinHandle<()>) {
+        let (read, write) = stream.into_split();
+
         let handler = Arc::new(Mutex::new(MachineCommunicator {
             log_subscribers: Vec::new(),
             log_buffer: CircularBuffer::new(),
+            stream: write,
         }));
 
-        let jh = tokio::spawn(packet_handler(stream, handler.clone(), stop_handler));
+        let jh = tokio::spawn(packet_handler(read, handler.clone(), stop_handler));
 
         (handler, jh)
     }
@@ -84,10 +91,23 @@ impl MachineCommunicator {
     fn drop_subscribers(&mut self) {
         self.log_subscribers.clear();
     }
+
+    pub async fn write(&mut self, packet: vmproto::host::HostPacket) -> Result<(), std::io::Error> {
+        let data = vmproto::host::serialize_host_packet(&packet);
+        let len = (data.len() as u32).to_be_bytes();
+        self.stream.write_all(&len).await?;
+        self.stream.write_all(&data).await?;
+        self.stream.flush().await?;
+        Ok(())
+    }
+
+    pub async fn send_shutdown(&mut self) -> Result<(), std::io::Error> {
+        self.write(vmproto::host::HostPacket::Shutdown).await
+    }
 }
 
 async fn packet_handler(
-    mut stream: UnixStream,
+    mut stream: OwnedReadHalf,
     handler: Arc<Mutex<MachineCommunicator>>,
     stop_handler: tokio::sync::oneshot::Sender<()>,
 ) {
@@ -99,7 +119,7 @@ async fn packet_handler(
                 handler.handle_packet(packet).await;
             }
             Err(_) => {
-                log::error!("Error reading from stream, closing connection");
+                log::debug!("Error reading from stream, closing connection");
                 break;
             }
         }
@@ -118,7 +138,7 @@ async fn read_from_stream(
             len = u32::from_be_bytes(len_buf) as usize;
         }
         Err(e) => {
-            log::error!("Error reading length from vsock: {}", e);
+            log::debug!("Error reading length from vsock: {}", e);
             return Err(());
         }
     }
@@ -127,7 +147,7 @@ async fn read_from_stream(
     let mut buf: Vec<u8> = vec![0; len];
     match stream.read_exact(&mut buf).await {
         Ok(0) => {
-            log::error!("Vsock connection closed");
+            log::debug!("Vsock connection closed");
             return Err(());
         }
         Ok(_) => {
@@ -135,7 +155,7 @@ async fn read_from_stream(
             match msg {
                 Ok(packet) => return Ok(packet),
                 Err(e) => {
-                    log::error!("Error deserializing packet: {}", e);
+                    log::debug!("Error deserializing packet: {}", e);
                     return Err(());
                 }
             }

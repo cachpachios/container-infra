@@ -131,19 +131,28 @@ impl Machine {
         &self.network
     }
 
-    pub async fn shutdown(mut self) -> NetworkStack {
-        let _ = self.vm.request_stop().await;
+    async fn _shutdown_gracefully(&mut self, timeout: Duration) -> Result<(), anyhow::Error> {
+        let (comm, jh) = self
+            .comm
+            .take()
+            .ok_or(anyhow::anyhow!("Communication never initialized"))?;
+        let mut comm =
+            tokio::time::timeout(Duration::from_millis(15).min(timeout), comm.lock()).await?;
+        comm.send_shutdown().await?;
+        Ok(tokio::time::timeout(timeout, jh).await??)
+    }
 
-        const MAX_WAIT: Duration = Duration::from_secs(3);
-
-        if let Some((_, join_handle)) = self.comm.take() {
-            let _ = tokio::time::timeout(MAX_WAIT, join_handle)
-                .await
-                .map_err(|_| {
-                    log::warn!("Timeout waiting for communication channel to close");
-                });
+    pub async fn shutdown(mut self, timeout: Option<Duration>) -> NetworkStack {
+        log::info!(
+            "Shutting down machine: {}, graceful timeout: {}s",
+            self.uuid(),
+            timeout.map_or("none".to_string(), |d| d.as_secs_f32().to_string())
+        );
+        if let Some(timeout) = timeout {
+            if let Err(_) = self._shutdown_gracefully(timeout).await {
+                log::warn!("Graceful shutdown timed out, proceeding with forceful shutdown");
+            }
         }
-
         let _ = self.vm.cleanup();
         self.network.into_inner()
     }

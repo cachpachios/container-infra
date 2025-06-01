@@ -1,7 +1,8 @@
 use bitcode::{Decode, Encode};
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum GuestExitCode {
+    GracefulShutdown, // Requested by the host to shut down gracefully
     FailedToPullContainerImage,
     ContainerExited(i32),
 }

@@ -20,6 +20,11 @@ message InstanceId {
     string id = 1;
 }
 
+message DeprovisionRequest {
+    string instance_id = 1;
+    int32 timeout_millis = 2; // Timeout for deprovisioning in milliseconds
+}
+
 message InstanceList {
     repeated InstanceId instances = 1;
 }
@@ -43,7 +48,7 @@ message PublishServicePortRequest {
 
 service NodeManager {
     rpc Provision (ProvisionRequest) returns (ProvisionResponse);
-    rpc Deprovision (InstanceId) returns (Empty);
+    rpc Deprovision (DeprovisionRequest) returns (Empty);
     rpc ListInstances (Empty) returns (InstanceList);
 
     rpc StreamLogs (InstanceId) returns (stream LogMessage);

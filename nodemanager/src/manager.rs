@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use hmac::Mac;
@@ -13,6 +14,7 @@ use proto::auth as proto_auth;
 use proto::node::node_manager_server::NodeManager as NodeManagerService;
 use proto::node::node_manager_server::NodeManagerServer as NodeManagerServiceServer;
 use proto::node::AllLogs;
+use proto::node::DeprovisionRequest;
 use proto::node::Empty;
 use proto::node::InstanceId;
 use proto::node::InstanceList;
@@ -99,19 +101,23 @@ impl InnerNodeManager {
         // Cleanup task
         tokio::spawn(async move {
             if let Ok(_) = machine_stop_rx.await {
-                let _ = self_clone._deprovision(&uuid_clone).await;
+                let _ = self_clone._deprovision(&uuid_clone, None).await;
                 info!("Machine {} stopped.", &uuid_clone);
             }
         });
         Ok(uuid)
     }
 
-    async fn _deprovision(&self, id: &str) -> anyhow::Result<()> {
+    async fn _deprovision(
+        &self,
+        id: &str,
+        graceful_timeout: Option<Duration>,
+    ) -> anyhow::Result<()> {
         let mut machines = self.machines.write().await;
         if let Some(machine) = machines.remove(id) {
             info!("Deprovisioning node {}", id);
             let mut network = self.network.lock().await;
-            let network_stack = machine.shutdown().await;
+            let network_stack = machine.shutdown(graceful_timeout).await;
             network.reclaim(network_stack);
         } else {
             warn!("Requested deprovisioning of missing machine with id {}", id);
@@ -123,8 +129,7 @@ impl InnerNodeManager {
         let mut machines = self.machines.write().await;
         let mut network_manager = self.network.lock().await;
         for (id, machine) in machines.drain() {
-            info!("Deprovisioning id {}", &id);
-            network_manager.reclaim(machine.shutdown().await);
+            network_manager.reclaim(machine.shutdown(Some(Duration::from_millis(100))).await);
         }
         Ok(())
     }
@@ -215,14 +220,26 @@ impl NodeManagerService for NodeManager {
         Ok(Response::new(ProvisionResponse { id }))
     }
 
-    async fn deprovision(&self, request: Request<InstanceId>) -> Result<Response<Empty>, Status> {
-        self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
+    async fn deprovision(
+        &self,
+        request: Request<DeprovisionRequest>,
+    ) -> Result<Response<Empty>, Status> {
+        self.validate_auth(request.metadata(), Some(&request.get_ref().instance_id))?;
         let request = request.into_inner();
 
-        self.inner._deprovision(&request.id).await.map_err(|e| {
-            error!("Failed to deprovision machine: {}", e);
-            Status::internal("Failed to deprovision machine")
-        })?;
+        let timeout;
+        if request.timeout_millis > 0 {
+            timeout = Some(Duration::from_millis(request.timeout_millis as u64));
+        } else {
+            timeout = None;
+        }
+        self.inner
+            ._deprovision(&request.instance_id, timeout)
+            .await
+            .map_err(|e| {
+                error!("Failed to deprovision machine: {}", e);
+                Status::internal("Failed to deprovision machine")
+            })?;
         Ok(Response::new(Empty {}))
     }
 

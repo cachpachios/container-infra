@@ -7,9 +7,13 @@ use std::{
     thread::sleep,
 };
 
+use host::read_packet;
 use libc::{reboot, sync};
 use oci_spec::distribution::Reference;
-use vmproto::guest::{GuestExitCode, GuestPacket, LogMessageType};
+use vmproto::{
+    guest::{GuestExitCode, GuestPacket, LogMessageType},
+    host::HostPacket,
+};
 
 mod containers;
 mod host;
@@ -17,16 +21,11 @@ mod init;
 mod mmds;
 mod sh;
 
-extern "C" fn handle_signal(sig: i32) {
-    log::info!("Received signal {}", sig);
-    todo!("Gracefully handle signal {}", sig);
-}
-
 fn main() {
     simple_logger::init_with_level(if cfg!(debug_assertions) {
         log::Level::Debug
     } else {
-        log::Level::Info
+        log::Level::Warn
     })
     .expect("Failed to initialize logger");
 
@@ -34,10 +33,6 @@ fn main() {
 
     if std::process::id() != 1 {
         panic!("This program is an init program and must be run as PID 1");
-    }
-
-    unsafe {
-        libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t);
     }
 
     log::info!("Running NodeAgent v. {}", env!("CARGO_PKG_VERSION"));
@@ -66,6 +61,39 @@ fn main() {
     comm.lock()
         .unwrap()
         .log_system_message(format!("NodeAgent v. {}", env!("CARGO_PKG_VERSION")));
+
+    let (exit_tx, exit_rx) = std::sync::mpsc::channel();
+
+    let container_running = Arc::new(Mutex::new(false));
+    let mut read_stream = comm
+        .lock()
+        .unwrap()
+        .clone_stream()
+        .expect("Failed to clone stream");
+    let shutdown_tx = exit_tx.clone();
+    let container_running_clone = container_running.clone();
+    let comm_clone = comm.clone();
+    std::thread::spawn(move || loop {
+        let packet = read_packet(&mut read_stream).expect("Failed to read packet from host");
+        match packet {
+            HostPacket::Shutdown => {
+                log::info!("Received shutdown command from host");
+                if *container_running_clone.lock().unwrap() {
+                    shutdown_tx
+                        .send(GuestExitCode::GracefulShutdown)
+                        .expect("Failed to send shutdown exit code");
+                } else {
+                    log::info!("No container is running, shutting down immediately");
+                    let mut comm = comm_clone.lock().unwrap();
+                    comm.log_system_message(
+                        "Received graceful shutdown command... Shutting down instance.".to_string(),
+                    );
+                    let _ = comm.write(GuestPacket::Exited(GuestExitCode::GracefulShutdown));
+                    shutdown();
+                }
+            }
+        }
+    });
 
     let reference = match Reference::try_from(config.image) {
         Ok(reference) => reference,
@@ -109,6 +137,8 @@ fn main() {
         .unwrap()
         .log_system_message("Executing container...".to_string());
 
+    *container_running.lock().unwrap() = true;
+
     let mut out = Command::new("/bin/crun")
         .arg("run")
         .arg("container")
@@ -127,19 +157,66 @@ fn main() {
     let stderr_thread =
         host::spawn_pipe_to_log(comm.clone(), Box::new(stderr), LogMessageType::Stderr);
 
-    let res = out.wait().expect("Failed to wait for container process");
+    let container_exit_tx = exit_tx.clone();
+    std::thread::spawn(move || {
+        let res = out.wait().expect("Failed to wait for container process");
+        container_exit_tx.send(GuestExitCode::ContainerExited(res.code().unwrap_or(9999)))
+    });
+
+    let mut read_stream = comm
+        .lock()
+        .unwrap()
+        .clone_stream()
+        .expect("Failed to clone stream");
+    std::thread::spawn(move || loop {
+        let packet = read_packet(&mut read_stream).expect("Failed to read packet from host");
+        match packet {
+            HostPacket::Shutdown => {
+                log::info!("Received shutdown command from host");
+                exit_tx
+                    .send(GuestExitCode::GracefulShutdown)
+                    .expect("Failed to send shutdown exit code");
+            }
+        }
+    });
+
+    let mut res = exit_rx
+        .recv()
+        .expect("Failed to receive exit status from container process");
+    log::info!("Exited recieved: {:?}", res);
+
+    if res == GuestExitCode::GracefulShutdown {
+        comm.lock().unwrap().log_system_message(
+            "Received graceful shutdown command... Stopping container.".to_string(),
+        );
+
+        if let Ok(mut stop_cmd) = Command::new("/bin/crun")
+            .arg("kill")
+            .arg("container")
+            .current_dir("/mnt")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            let _ = stop_cmd.wait();
+        }
+
+        // wait for the graceful shutdown to complete
+        res = exit_rx
+            .recv()
+            .expect("Failed to receive exit status from container process after shutdown");
+    }
 
     comm.lock()
         .unwrap()
-        .write(GuestPacket::Exited(GuestExitCode::ContainerExited(
-            res.code().unwrap_or(9993),
-        )))
+        .write(GuestPacket::Exited(res))
         .expect("Failed to write exit status to host");
 
     let _ = stdout_thread.join();
     let _ = stderr_thread.join();
 
-    log::info!("Container exited with status: {:?}", res.code());
+    log::info!("Container exited with status: {:?}", res);
     shutdown();
 }
 

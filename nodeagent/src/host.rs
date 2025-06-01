@@ -3,16 +3,20 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use vmproto::guest::{serialize_guest_packet, GuestPacket, LogMessage, LogMessageType};
+use vmproto::{
+    guest::{serialize_guest_packet, GuestPacket, LogMessage, LogMessageType},
+    host::HostPacket,
+};
 use vsock::VsockStream;
 
-const BUFFER_SIZE: usize = 1024;
+const BUFFER_SIZE: usize = 2 * 1024;
 
 #[derive(Debug)]
 pub enum CommErrors {
     UnableToConnect,
     #[allow(dead_code)]
     IoError(std::io::Error),
+    HostDeserializationError,
 }
 
 pub struct HostCommunication {
@@ -30,6 +34,7 @@ impl HostCommunication {
         stream
             .set_write_timeout(None)
             .map_err(CommErrors::IoError)?;
+
         Ok(HostCommunication { stream })
     }
 
@@ -58,6 +63,10 @@ impl HostCommunication {
         log::debug!("{}", message);
         self.write(GuestPacket::Log(LogMessage::system(message)))
             .unwrap();
+    }
+    pub fn clone_stream(&mut self) -> Result<VsockStream, CommErrors> {
+        let cloned_stream = self.stream.try_clone().map_err(CommErrors::IoError)?;
+        Ok(cloned_stream)
     }
 }
 
@@ -115,4 +124,22 @@ pub fn spawn_pipe_to_log(
             }
         }
     })
+}
+
+pub fn read_packet(stream: &mut VsockStream) -> Result<HostPacket, CommErrors> {
+    let mut len_buf = [0; 4];
+    stream
+        .read_exact(&mut len_buf)
+        .map_err(CommErrors::IoError)?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len > BUFFER_SIZE {
+        log::error!("Received packet length exceeds buffer size: {}", len);
+        return Err(CommErrors::HostDeserializationError);
+    }
+    let mut data = vec![0; len];
+    stream.read_exact(&mut data).map_err(CommErrors::IoError)?;
+    let packet = vmproto::host::deserialize_host_packet(&data)
+        .map_err(|_| CommErrors::HostDeserializationError)?;
+    log::trace!("Received packet: {:?}", packet);
+    Ok(packet)
 }
