@@ -98,7 +98,7 @@ impl InnerNodeManager {
 
         // Cleanup task
         tokio::spawn(async move {
-            if let Some(_) = machine_stop_rx.await.ok() {
+            if let Ok(_) = machine_stop_rx.await {
                 let _ = self_clone._deprovision(&uuid_clone).await;
                 info!("Machine {} stopped.", &uuid_clone);
             }
@@ -250,15 +250,21 @@ impl NodeManagerService for NodeManager {
 
         let (tx, rpc_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            for log in logs {
-                let log_message = LogMessage { message: log };
+            for l in logs {
+                let log_message = LogMessage {
+                    message: l.text.clone(),
+                    timestamp: l.timestamp_ms as i64,
+                    log_type: l.message_type.as_str().to_string(),
+                };
                 if let Err(_) = tx.send(Ok(log_message)).await {
                     return;
                 }
             }
-            while let Some(log) = log_rx.recv().await {
+            while let Some(l) = log_rx.recv().await {
                 let log_message = LogMessage {
-                    message: log.to_string(),
+                    message: l.text.clone(),
+                    timestamp: l.timestamp_ms as i64,
+                    log_type: l.message_type.as_str().to_string(),
                 };
                 if let Err(_) = tx.send(Ok(log_message)).await {
                     return;
@@ -306,7 +312,11 @@ impl NodeManagerService for NodeManager {
                     Status::internal("Failed to get logs")
                 })?
                 .into_iter()
-                .map(|s| LogMessage { message: s })
+                .map(|s| LogMessage {
+                    message: s.text.clone(),
+                    timestamp: s.timestamp_ms as i64,
+                    log_type: s.message_type.as_str().to_string(),
+                })
                 .collect(),
         }))
     }

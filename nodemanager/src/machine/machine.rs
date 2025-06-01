@@ -7,6 +7,7 @@ use anyhow::Result;
 use log::trace;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use vmproto::guest::LogMessage;
 
 pub struct Machine {
     vm: JailedCracker,
@@ -149,7 +150,10 @@ impl Machine {
 
     pub async fn get_and_subscribe_to_logs(
         &self,
-    ) -> Result<(Vec<String>, tokio::sync::mpsc::Receiver<Arc<str>>)> {
+    ) -> Result<(
+        Vec<Arc<LogMessage>>,
+        tokio::sync::mpsc::Receiver<Arc<LogMessage>>,
+    )> {
         let comm = self
             .comm
             .as_ref()
@@ -158,7 +162,7 @@ impl Machine {
         Ok((handler.clone_buffer(), handler.subscribe_log()))
     }
 
-    pub async fn get_logs(&self) -> Result<Vec<String>> {
+    pub async fn get_logs(&self) -> Result<Vec<Arc<LogMessage>>> {
         let comm = self
             .comm
             .as_ref()

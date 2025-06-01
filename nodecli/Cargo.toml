@@ -10,3 +10,4 @@ proto = { path = "../proto"}
 clap = { version = "4.5.37", features = ["derive"] }
 log = "0.4.27"
 simple_logger = "5.0.0"
+chrono = "0.4.41"

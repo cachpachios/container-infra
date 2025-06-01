@@ -13,6 +13,16 @@ pub enum LogMessageType {
     Stderr, // Standard error from the container
 }
 
+impl LogMessageType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LogMessageType::System => "system",
+            LogMessageType::Stdout => "stdout",
+            LogMessageType::Stderr => "stderr",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct LogMessage {
     pub text: String,

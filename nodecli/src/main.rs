@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
+use chrono::DateTime;
 use log::error;
 use log::info;
 use proto::node::Empty;
@@ -165,7 +167,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map(|response| {
                         let logs = response.into_inner().logs;
                         for log in logs {
-                            println!("{}", log.message);
+                            let ts = DateTime::from_timestamp(
+                                log.timestamp / 1000,
+                                (log.timestamp as u32 % 1000) * 1_000_000,
+                            )
+                            .unwrap()
+                            .with_timezone(&chrono::Local);
+                            println!(
+                                "[{}] {} - {}",
+                                log.log_type,
+                                ts.format("%Y-%m-%d %H:%M:%S%.3f"),
+                                log.message
+                            );
                         }
                     })
                     .map_err(|e| error!("Failed to get logs for instance {}: {}", instance_id, e))
@@ -217,7 +230,18 @@ async fn stream_logs(
                 let next = stream.message().await;
                 match next {
                     Ok(Some(log_message)) => {
-                        println!("{}", log_message.message);
+                        let ts = DateTime::from_timestamp(
+                            log_message.timestamp / 1000,
+                            (log_message.timestamp as u32 % 1000) * 1_000_000,
+                        )
+                        .unwrap()
+                        .with_timezone(&chrono::Local);
+                        println!(
+                            "[{}] {} - {}",
+                            log_message.log_type,
+                            ts.format("%Y-%m-%d %H:%M:%S%.3f"),
+                            log_message.message
+                        );
                     }
                     Ok(None) => {
                         info!("No more logs for instance {}", instance_id);

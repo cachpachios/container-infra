@@ -9,12 +9,13 @@ use tokio::{
         Mutex,
     },
 };
+use vmproto::guest::LogMessage;
 
 const MAX_LINES_IN_BUFFER: usize = 256;
 
 pub struct MachineCommunicator {
-    log_subscribers: Vec<Sender<Arc<str>>>,
-    log_buffer: CircularBuffer<MAX_LINES_IN_BUFFER, String>,
+    log_subscribers: Vec<Sender<Arc<LogMessage>>>,
+    log_buffer: CircularBuffer<MAX_LINES_IN_BUFFER, Arc<LogMessage>>,
 }
 
 impl MachineCommunicator {
@@ -36,7 +37,7 @@ impl MachineCommunicator {
         match packet {
             vmproto::guest::GuestPacket::Log(log) => {
                 log::trace!("Received log packet: {:?}", log);
-                self.push_log(&log.text).await;
+                self.push_log(log).await;
             }
             vmproto::guest::GuestPacket::Exited(exit_code) => {
                 //TODO!!!
@@ -45,18 +46,17 @@ impl MachineCommunicator {
         }
     }
 
-    async fn push_log(&mut self, data: &str) {
-        self.log_buffer.push_front(data.to_string());
+    async fn push_log(&mut self, data: LogMessage) {
+        let data = Arc::from(data);
+        self.log_buffer.push_front(data.clone());
         if self.log_subscribers.is_empty() {
             return;
         }
 
-        let data_arc: Arc<str> = Arc::from(data);
-
         let mut to_drop = Vec::new();
 
         for (i, tx) in self.log_subscribers.iter().enumerate() {
-            if let Err(_) = tx.try_send(data_arc.clone()) {
+            if let Err(_) = tx.try_send(data.clone()) {
                 to_drop.push(i);
             }
         }
@@ -71,13 +71,13 @@ impl MachineCommunicator {
         }
     }
 
-    pub fn subscribe_log(&mut self) -> Receiver<Arc<str>> {
+    pub fn subscribe_log(&mut self) -> Receiver<Arc<LogMessage>> {
         let (tx, rx) = tokio::sync::mpsc::channel(128);
         self.log_subscribers.push(tx);
         rx
     }
 
-    pub fn clone_buffer(&self) -> Vec<String> {
+    pub fn clone_buffer(&self) -> Vec<Arc<LogMessage>> {
         self.log_buffer.iter().cloned().collect()
     }
 
