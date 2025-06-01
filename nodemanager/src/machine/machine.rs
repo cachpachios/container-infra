@@ -136,21 +136,27 @@ impl Machine {
             .comm
             .take()
             .ok_or(anyhow::anyhow!("Communication never initialized"))?;
-        let mut comm =
-            tokio::time::timeout(Duration::from_millis(15).min(timeout), comm.lock()).await?;
-        comm.send_shutdown().await?;
-        Ok(tokio::time::timeout(timeout, jh).await??)
+        {
+            let mut comm: tokio::sync::MutexGuard<'_, MachineCommunicator> =
+                tokio::time::timeout(Duration::from_millis(50).min(timeout), comm.lock()).await?;
+            comm.send_shutdown().await?;
+        }
+        let _ = tokio::time::timeout(timeout, jh).await?;
+        Ok(())
     }
 
     pub async fn shutdown(mut self, timeout: Option<Duration>) -> NetworkStack {
-        log::info!(
+        log::debug!(
             "Shutting down machine: {}, graceful timeout: {}s",
             self.uuid(),
-            timeout.map_or("none".to_string(), |d| d.as_secs_f32().to_string())
+            timeout.map(|d| d.as_secs_f32()).unwrap_or(0f32).to_string()
         );
         if let Some(timeout) = timeout {
-            if let Err(_) = self._shutdown_gracefully(timeout).await {
-                log::warn!("Graceful shutdown timed out, proceeding with forceful shutdown");
+            if let Err(e) = self._shutdown_gracefully(timeout).await {
+                log::warn!(
+                    "Graceful shutdown timed out ({:?}), proceeding with forceful shutdown",
+                    e
+                );
             }
         }
         let _ = self.vm.cleanup();

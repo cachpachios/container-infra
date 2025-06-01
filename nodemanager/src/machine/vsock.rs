@@ -4,7 +4,7 @@ use circular_buffer::CircularBuffer;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
-        unix::{OwnedReadHalf, OwnedWriteHalf, WriteHalf},
+        unix::{OwnedReadHalf, OwnedWriteHalf},
         UnixStream,
     },
     sync::{
@@ -117,15 +117,17 @@ async fn packet_handler(
                 log::trace!("Received packet: {:?}", packet);
                 let mut handler = handler.lock().await;
                 handler.handle_packet(packet).await;
+                log::trace!("Packet handled");
             }
             Err(_) => {
-                log::debug!("Error reading from stream, closing connection");
                 break;
             }
         }
     }
-    handler.lock().await.drop_subscribers();
+    log::trace!("Packet handler loop exited, shutting down");
+    let _ = handler.try_lock().map(|mut h| h.drop_subscribers());
     let _ = stop_handler.send(());
+    log::trace!("Packet handler stopped");
 }
 
 async fn read_from_stream(

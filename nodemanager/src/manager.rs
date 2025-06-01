@@ -120,7 +120,7 @@ impl InnerNodeManager {
             let network_stack = machine.shutdown(graceful_timeout).await;
             network.reclaim(network_stack);
         } else {
-            warn!("Requested deprovisioning of missing machine with id {}", id);
+            debug!("Requested deprovisioning of missing machine with id {}", id);
         }
         Ok(())
     }
@@ -128,8 +128,8 @@ impl InnerNodeManager {
     async fn _drain(&self) -> anyhow::Result<()> {
         let mut machines = self.machines.write().await;
         let mut network_manager = self.network.lock().await;
-        for (id, machine) in machines.drain() {
-            network_manager.reclaim(machine.shutdown(Some(Duration::from_millis(100))).await);
+        for (_id, machine) in machines.drain() {
+            network_manager.reclaim(machine.shutdown(Some(Duration::from_secs(3))).await);
         }
         Ok(())
     }

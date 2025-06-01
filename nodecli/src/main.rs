@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use chrono::DateTime;
 use log::error;
 use log::info;
+use proto::node::DeprovisionRequest;
 use proto::node::Empty;
 use proto::node::InstanceId;
 use proto::node::ProvisionRequest;
@@ -133,8 +134,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Rm { instance_id } => {
-            let request = tonic::Request::new(InstanceId {
-                id: instance_id.clone(),
+            let request = tonic::Request::new(DeprovisionRequest {
+                instance_id: instance_id.clone(),
+                timeout_millis: 5000, // Default timeout of 5 seconds
             });
             let response = client.deprovision(request).await;
             match response {

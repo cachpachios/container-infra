@@ -163,23 +163,6 @@ fn main() {
         container_exit_tx.send(GuestExitCode::ContainerExited(res.code().unwrap_or(9999)))
     });
 
-    let mut read_stream = comm
-        .lock()
-        .unwrap()
-        .clone_stream()
-        .expect("Failed to clone stream");
-    std::thread::spawn(move || loop {
-        let packet = read_packet(&mut read_stream).expect("Failed to read packet from host");
-        match packet {
-            HostPacket::Shutdown => {
-                log::info!("Received shutdown command from host");
-                exit_tx
-                    .send(GuestExitCode::GracefulShutdown)
-                    .expect("Failed to send shutdown exit code");
-            }
-        }
-    });
-
     let mut res = exit_rx
         .recv()
         .expect("Failed to receive exit status from container process");
@@ -206,15 +189,15 @@ fn main() {
         res = exit_rx
             .recv()
             .expect("Failed to receive exit status from container process after shutdown");
+    } else {
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
     }
 
     comm.lock()
         .unwrap()
         .write(GuestPacket::Exited(res))
         .expect("Failed to write exit status to host");
-
-    let _ = stdout_thread.join();
-    let _ = stderr_thread.join();
 
     log::info!("Container exited with status: {:?}", res);
     shutdown();
