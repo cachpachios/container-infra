@@ -97,7 +97,7 @@ impl JailedCracker {
         firecracker_bin: &Path,
         uid_offset: u16,
         mmds_json: Option<&str>,
-    ) -> Result<(Self, ChildStdout)> {
+    ) -> Result<Self> {
         let uuid: String = Uuid::new_v4().to_string();
         debug!("Starting jailed firecracker instance with id {}", uuid);
 
@@ -112,7 +112,7 @@ impl JailedCracker {
         cmd.arg("--");
         cmd.arg("--level").arg("error");
 
-        cmd.stdout(Stdio::piped());
+        cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
         cmd.stdin(Stdio::null());
 
@@ -135,11 +135,7 @@ impl JailedCracker {
             cmd.arg("--metadata").arg("metadata.json");
         }
 
-        let mut cmd = cmd.spawn()?;
-
-        let stdout = cmd.stdout.take().ok_or(anyhow::Error::msg(
-            "Unable to get stdout from jailer process",
-        ))?;
+        let cmd: Child = cmd.spawn()?;
 
         // Wait for jailer to start firecracker and create socket, max 1ms
         for _ in 0..20 {
@@ -160,16 +156,13 @@ impl JailedCracker {
         )
         .await?;
 
-        Ok((
-            Self {
-                uuid,
-                root_path,
-                proc: cmd,
-                uid,
-                api_client,
-            },
-            (stdout),
-        ))
+        Ok(Self {
+            uuid,
+            root_path,
+            proc: cmd,
+            uid,
+            api_client,
+        })
     }
 
     pub fn uuid(&self) -> &str {

@@ -49,7 +49,6 @@ impl LogMessage {
 // Guest -> Host
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum GuestPacket {
-    Online,
     Exited(GuestExitCode),
     Log(LogMessage),
 }

@@ -243,7 +243,10 @@ impl NodeManagerService for NodeManager {
             }
         };
 
-        let (logs, mut log_rx) = machine.get_and_subscribe_to_logs().await;
+        let (logs, mut log_rx) = machine.get_and_subscribe_to_logs().await.map_err(|e| {
+            error!("Failed to get logs: {}", e);
+            Status::internal("Failed to get logs")
+        })?;
 
         let (tx, rpc_rx) = mpsc::channel(128);
         tokio::spawn(async move {
@@ -298,6 +301,10 @@ impl NodeManagerService for NodeManager {
             logs: machine
                 .get_logs()
                 .await
+                .map_err(|e| {
+                    error!("Failed to get logs: {}", e);
+                    Status::internal("Failed to get logs")
+                })?
                 .into_iter()
                 .map(|s| LogMessage { message: s })
                 .collect(),

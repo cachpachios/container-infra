@@ -6,7 +6,7 @@ use std::{
 use vmproto::guest::{serialize_guest_packet, GuestPacket, LogMessage, LogMessageType};
 use vsock::VsockStream;
 
-const BUFFER_SIZE: usize = 1024 * 4;
+const BUFFER_SIZE: usize = 1024;
 
 #[derive(Debug)]
 pub enum CommErrors {
