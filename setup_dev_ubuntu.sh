@@ -40,5 +40,5 @@ fi
 echo Consturcting the rootfs...
 ./instance/makefs.sh
 
-echo You are now redy to start a nodemanager.
+echo You are now ready to start a nodemanager.
 
