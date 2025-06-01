@@ -32,7 +32,7 @@ impl MMDSClient {
     }
 
     fn rotate_token(&mut self) -> Result<(), MMDSClientError> {
-        if SystemTime::now() >= self.token_expiry {
+        if SystemTime::now() >= self.token_expiry - std::time::Duration::from_secs(60) {
             let expiry_seconds = 14400; // 4 hours
             let token_expiry = SystemTime::now() + std::time::Duration::from_secs(expiry_seconds);
             let resp = self
@@ -61,7 +61,8 @@ impl MMDSClient {
         Ok(())
     }
 
-    pub fn get<T: DeserializeOwned>(&self, resource_path: &str) -> Result<T, MMDSClientError> {
+    pub fn get<T: DeserializeOwned>(&mut self, resource_path: &str) -> Result<T, MMDSClientError> {
+        self.rotate_token()?;
         let resp = self
             .client
             .get(format!("http://{}{}", MMDS_IP_ADDR, resource_path))

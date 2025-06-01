@@ -8,6 +8,7 @@ use async_process::{Child, ChildStdout, Command};
 use http_client_unix_domain_socket::{ClientUnix, Method};
 use log::{debug, trace};
 use serde::Serialize;
+use tokio::net::UnixListener;
 use uuid::Uuid;
 
 use crate::networking::TunTap;
@@ -52,6 +53,12 @@ struct MmdsConfig {
 struct BootSource {
     kernel_image_path: String,
     boot_args: String,
+}
+
+#[derive(Serialize)]
+struct Vsock {
+    guest_cid: u32,
+    uds_path: String,
 }
 
 #[derive(Serialize)]
@@ -261,6 +268,29 @@ impl JailedCracker {
             &interface,
         )
         .await
+    }
+
+    async fn add_host_vsock(&mut self, guest_cid: u32) -> Result<PathBuf> {
+        trace!("Adding vsock with guest CID {}", guest_cid);
+        let vsock = Vsock {
+            guest_cid,
+            uds_path: "/run/v.sock".into(),
+        };
+        self.request_with_json("/vsock", Method::PUT, &vsock)
+            .await?;
+        Ok(self.root_path.join("run/v.sock"))
+    }
+
+    pub async fn open_vsock_listener(&mut self, port: u32) -> Result<UnixListener> {
+        let _ = self.add_host_vsock(u32::MAX).await?;
+        let vsock_path = self.root_path.join(format!("run/v.sock_{}", port));
+        trace!("Opening vsock listener on path {:?}", vsock_path);
+        let listener = UnixListener::bind(&vsock_path)
+            .with_context(|| format!("Unable to bind vsock listener on {:?}", vsock_path))?;
+        // Chown the vsock path to the firecracker UID
+        std::os::unix::fs::chown(&vsock_path, Some(self.uid), Some(self.uid))
+            .with_context(|| format!("Unable to chown vsock path {:?}", vsock_path))?;
+        Ok(listener)
     }
 
     pub async fn config_mmds(&mut self, guest_name: &str) -> Result<()> {

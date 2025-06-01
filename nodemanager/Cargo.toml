@@ -16,8 +16,10 @@ http-client-unix-domain-socket = { version = "0.1.1" }
 async-process = "2.3.0"
 futures-lite = "2.6.0"
 proto = { path = "../proto"}
+vmproto = { path = "../vmproto"}
 tonic = "0.13.0"
 tokio-stream = "0.1.17"
 hmac = "0.12.1"
 sha2 = "0.10.9"
+rand = "0.9.1"
 

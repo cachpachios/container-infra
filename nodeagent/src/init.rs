@@ -3,7 +3,7 @@ use std::process::Command;
 use crate::sh::cmd;
 
 fn mke2fs(args: &[&str]) {
-    let output = std::process::Command::new("/sbin/mke2fs")
+    let output = Command::new("/sbin/mke2fs")
         .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

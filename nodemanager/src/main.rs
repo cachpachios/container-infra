@@ -1,7 +1,7 @@
 use nodemanager::manager::{serve, ManagerConfig, NodeManager};
 
 fn main() {
-    env_logger::init();
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("trace"));
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)

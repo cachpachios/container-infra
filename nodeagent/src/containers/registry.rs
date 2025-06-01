@@ -147,7 +147,10 @@ pub fn docker_io_oauth(
         resource_name,
         actions.join(",")
     );
-    let resp = reqwest::blocking::get(url).map_err(|e| e.to_string())?;
+    let resp = reqwest::blocking::get(url).map_err(|e| {
+        log::debug!("Error while obtaining docker.io token: {:?}", e);
+        e.to_string()
+    })?;
 
     #[derive(Deserialize)]
     struct TokenResponse {
@@ -155,7 +158,7 @@ pub fn docker_io_oauth(
     }
     let resp: TokenResponse = resp.json().map_err(|e| e.to_string())?;
 
-    log::debug!("Obtained anono docker.io token: {}", resp.token);
+    log::debug!("Obtained docker.io token: {}", resp.token);
 
     Ok(resp.token)
 }

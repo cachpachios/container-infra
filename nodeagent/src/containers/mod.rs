@@ -33,12 +33,6 @@ pub fn pull_and_prepare_image(
     let mut layer_folders = Vec::with_capacity(layer_count);
 
     for (i, layer) in manifest.layers().iter().enumerate() {
-        log::info!(
-            "Pulling layer {} of {} - {}",
-            i + 1,
-            layer_count,
-            layer.digest()
-        );
         let layer = layer.clone();
         let reference = reference.clone();
         let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
