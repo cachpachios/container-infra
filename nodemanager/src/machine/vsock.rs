@@ -85,7 +85,7 @@ impl MachineCommunicator {
     }
 
     pub fn clone_buffer(&self) -> Vec<Arc<LogMessage>> {
-        self.log_buffer.iter().cloned().collect()
+        self.log_buffer.iter().rev().cloned().collect()
     }
 
     fn drop_subscribers(&mut self) {
