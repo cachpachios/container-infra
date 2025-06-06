@@ -177,10 +177,10 @@ fn get_with_backoff(
     auth_token: Option<&str>,
 ) -> Result<reqwest::blocking::Response, RegistryErrors> {
     let backoff = ExponentialBackoff {
-        initial_interval: std::time::Duration::from_millis(100),
-        max_interval: std::time::Duration::from_secs(2),
-        max_elapsed_time: Some(std::time::Duration::from_secs(5)),
-        multiplier: 2.0,
+        initial_interval: std::time::Duration::from_secs(1),
+        max_interval: std::time::Duration::from_secs(3),
+        max_elapsed_time: Some(std::time::Duration::from_secs(6)),
+        multiplier: 3.0,
         ..Default::default()
     };
     let op = || {
