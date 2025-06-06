@@ -19,7 +19,7 @@ const MAX_LINES_IN_BUFFER: usize = 256;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MachineExit {
     Unknown,
-    ContainerExited(u32),
+    ContainerExited(i32),
     GracefulShutdown,
     FailedToPullContainerImage,
 }
@@ -32,7 +32,7 @@ impl From<vmproto::guest::GuestExitCode> for MachineExit {
                 MachineExit::FailedToPullContainerImage
             }
             vmproto::guest::GuestExitCode::ContainerExited(code) => {
-                MachineExit::ContainerExited(code as u32)
+                MachineExit::ContainerExited(code)
             }
         }
     }
