@@ -84,14 +84,26 @@ pub fn spawn_pipe_to_log(
             let buf_slice = &mut buf[pos..];
             match pipe.read(buf_slice) {
                 Ok(0) => {
-                    log::debug!("Pipe closed. No more data to read.");
-                    break;
+                    log::warn!("Pipe closed for ({:?}). No more data to read.", log_type);
+                    if pos > 0 {
+                        let line = String::from_utf8_lossy(&buf[..pos]);
+                        log::debug!("Final {:?} log line: {}", log_type, line);
+                        comm.lock()
+                            .unwrap()
+                            .write(GuestPacket::Log(LogMessage::new(
+                                line.to_string(),
+                                log_type,
+                            )))
+                            .unwrap();
+                    }
+                    return;
                 }
                 Ok(n) => {
                     let newline_index = buf_slice[..n].iter().position(|&b| b == b'\n');
                     if let Some(newline_index) = newline_index {
                         let index = pos + newline_index;
                         let line = String::from_utf8_lossy(&buf[..index]);
+                        log::debug!("Received {:?} log line: {}", log_type, line);
                         comm.lock()
                             .unwrap()
                             .write(GuestPacket::Log(LogMessage::new(
@@ -119,7 +131,7 @@ pub fn spawn_pipe_to_log(
                 }
                 Err(e) => {
                     log::error!("Error reading from pipe. Error: {}", e);
-                    break;
+                    return;
                 }
             }
         }

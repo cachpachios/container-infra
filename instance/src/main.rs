@@ -189,10 +189,9 @@ fn main() {
         res = exit_rx
             .recv()
             .expect("Failed to receive exit status from container process after shutdown");
-    } else {
-        let _ = stdout_thread.join();
-        let _ = stderr_thread.join();
     }
+    let _ = stdout_thread.join();
+    let _ = stderr_thread.join();
 
     comm.lock()
         .unwrap()
