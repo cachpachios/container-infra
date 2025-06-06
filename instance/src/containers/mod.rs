@@ -1,13 +1,19 @@
-use std::sync::{atomic::AtomicI32, Arc, Mutex};
+use std::{
+    collections::VecDeque,
+    sync::{atomic::AtomicI32, Arc, Mutex},
+};
 
+use number_prefix::NumberPrefix;
 use oci_spec::{distribution::Reference, runtime::Spec};
 use rt::RuntimeOverrides;
 
-use crate::host::HostCommunication;
+use crate::{containers::registry::RegistryErrors, host::HostCommunication};
 
 pub mod fs;
 pub mod registry;
 pub mod rt;
+
+const CONCURRENT_LAYER_DOWNLOADS: usize = 5;
 
 pub fn pull_and_prepare_image(
     reference: Reference,
@@ -41,47 +47,69 @@ pub fn pull_and_prepare_image(
         layer_count
     ));
 
-    let mut layer_threads = Vec::with_capacity(layer_count);
+    let worker_threads_count = CONCURRENT_LAYER_DOWNLOADS.min(layer_count);
+    let mut worker_threads = Vec::with_capacity(worker_threads_count);
 
     let mut layer_folders = Vec::with_capacity(layer_count);
 
+    for layer in manifest.layers() {
+        let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
+        std::fs::create_dir_all(&folder).map_err(|_| registry::RegistryErrors::IOErr)?;
+        layer_folders.push(folder);
+    }
+
     let layer_progress: Arc<AtomicI32> = Arc::new(0.into());
 
-    for (i, layer) in manifest.layers().iter().enumerate() {
-        let layer = layer.clone();
+    let layers = Arc::new(Mutex::new(
+        manifest.layers().iter().cloned().collect::<VecDeque<_>>(),
+    ));
+
+    for _ in 0..worker_threads_count {
         let reference = reference.clone();
-        let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
-        layer_folders.push(folder.clone());
-
         let auth = auth.clone();
+        let comm = comm.clone();
+        let progress = layer_progress.clone();
+        let layers = layers.clone();
+        let layers_folder = layers_folder.clone();
+        let jh: std::thread::JoinHandle<Result<(), RegistryErrors>> =
+            std::thread::spawn(move || {
+                loop {
+                    let layer = match layers.lock().unwrap().pop_front() {
+                        Some(layer) => layer,
+                        None => return Ok(()), // No more layers to process
+                    };
+                    let folder = layers_folder.join(layer.digest().to_string().replace(":", ""));
+                    std::fs::create_dir_all(&folder)
+                        .map_err(|_| registry::RegistryErrors::IOErr)?;
+                    let layer_compressed_size = registry::pull_and_extract_layer(
+                        &reference,
+                        &layer,
+                        &folder,
+                        auth.as_deref(),
+                    )?;
 
-        // Spawn a thread to pull the layer
-        let comm_clone = comm.clone();
-        let progress_clone = layer_progress.clone();
-        let jh = std::thread::spawn(move || {
-            std::fs::create_dir_all(&folder).map_err(|_| registry::RegistryErrors::IOErr)?;
-            let r = registry::pull_and_extract_layer(&reference, &layer, &folder, auth.as_deref());
-            log::info!(
-                "Pulled layer {} of {} - {}",
-                i + 1,
-                layer_count,
-                layer.digest()
-            );
-            let mut comm_clone_lock = comm_clone.lock().unwrap();
-            let i = progress_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            comm_clone_lock.log_system_message(format!(
-                "Pulled and extracted layer {} of {} - {}",
-                i + 1,
-                layer_count,
-                layer.digest()
-            ));
-            r
-        });
-        layer_threads.push(jh);
+                    let layer_compressed_size =
+                        match NumberPrefix::decimal(layer_compressed_size as f64) {
+                            NumberPrefix::Standalone(v) => format!("{} bytes", v),
+                            NumberPrefix::Prefixed(prefix, v) => format!("{} {}B", v, prefix),
+                        };
+
+                    let mut comm_clone_lock = comm.lock().unwrap();
+                    let i = progress.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    comm_clone_lock.log_system_message(format!(
+                        "Pulled and extracted layer {} of {} - {} ({})",
+                        i + 1,
+                        layer_count,
+                        layer.digest(),
+                        layer_compressed_size
+                    ));
+                }
+            });
+        worker_threads.push(jh);
     }
 
     // Wait for all threads to finish
-    for jh in layer_threads {
+    for jh in worker_threads {
         jh.join().map_err(|_| registry::RegistryErrors::IOErr)??;
     }
 

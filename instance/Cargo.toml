@@ -17,3 +17,4 @@ tar = "0.4.44"
 vsock = "0.5.1"
 vmproto = { path = "../vmproto"}
 backoff = "0.4.0"
+number_prefix = "0.4.0"

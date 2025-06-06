@@ -120,10 +120,9 @@ fn main() {
     log::debug!("Runtime overrides: {:?}", rt_overrides);
     flush_buffers();
 
-    comm.lock().unwrap().state_change(
-        InitVmState::ExecutingContainer,
-        Some("Executing container...".to_string()),
-    );
+    comm.lock()
+        .unwrap()
+        .state_change(InitVmState::ExecutingContainer, None);
 
     *container_running.lock().unwrap() = true;
 
