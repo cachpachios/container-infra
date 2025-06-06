@@ -35,9 +35,11 @@ use tonic::Status;
 
 use hmac::Hmac;
 use sha2::Sha256;
+use uuid::Uuid;
 
 use crate::machine;
 use crate::machine::Machine;
+use crate::machine::MachineExit;
 use crate::networking::NetworkManager;
 
 #[derive(Deserialize)]
@@ -51,6 +53,7 @@ struct InnerNodeManager {
     config: ManagerConfig,
     machines: RwLock<HashMap<String, Machine>>,
     network: Mutex<NetworkManager>,
+    machine_state_subscription: Option<mpsc::Sender<(Uuid, MachineExit)>>,
 }
 
 impl InnerNodeManager {
@@ -100,9 +103,8 @@ impl InnerNodeManager {
 
         // Cleanup task
         tokio::spawn(async move {
-            if let Ok(_) = machine_stop_rx.await {
-                let _ = self_clone._deprovision(&uuid_clone, None).await;
-                info!("Machine {} stopped.", &uuid_clone);
+            if let Ok(exit_code) = machine_stop_rx.await {
+                let _ = self_clone.handle_machine_exit(&uuid_clone, exit_code).await;
             }
         });
         Ok(uuid)
@@ -125,6 +127,18 @@ impl InnerNodeManager {
         Ok(())
     }
 
+    async fn handle_machine_exit(&self, id: &str, exit_code: MachineExit) -> anyhow::Result<()> {
+        if let Some(tx) = self.machine_state_subscription.as_ref() {
+            let _ = tx
+                .send((
+                    Uuid::parse_str(id).expect("A generated uuid was invalid? Wtf?"),
+                    exit_code,
+                ))
+                .await;
+        }
+        self._deprovision(id, None).await
+    }
+
     async fn _drain(&self) -> anyhow::Result<()> {
         let mut machines = self.machines.write().await;
         let mut network_manager = self.network.lock().await;
@@ -144,6 +158,7 @@ impl NodeManager {
     pub async fn new(
         config: ManagerConfig,
         authentication_secret: Option<&[u8]>,
+        machine_state_subscription: Option<mpsc::Sender<(Uuid, MachineExit)>>,
     ) -> Result<(
         Self,
         tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>,
@@ -152,6 +167,7 @@ impl NodeManager {
             machines: RwLock::new(HashMap::new()),
             config,
             network: Mutex::new(NetworkManager::new()?),
+            machine_state_subscription,
         });
         let (shutdown_tx, shutdown_rx) =
             tokio::sync::oneshot::channel::<tokio::sync::oneshot::Sender<()>>();

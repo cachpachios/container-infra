@@ -16,6 +16,28 @@ use vmproto::guest::LogMessage;
 
 const MAX_LINES_IN_BUFFER: usize = 256;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MachineExit {
+    Unknown,
+    ContainerExited(u32),
+    GracefulShutdown,
+    FailedToPullContainerImage,
+}
+
+impl From<vmproto::guest::GuestExitCode> for MachineExit {
+    fn from(code: vmproto::guest::GuestExitCode) -> Self {
+        match code {
+            vmproto::guest::GuestExitCode::GracefulShutdown => MachineExit::GracefulShutdown,
+            vmproto::guest::GuestExitCode::FailedToPullContainerImage => {
+                MachineExit::FailedToPullContainerImage
+            }
+            vmproto::guest::GuestExitCode::ContainerExited(code) => {
+                MachineExit::ContainerExited(code as u32)
+            }
+        }
+    }
+}
+
 pub struct MachineCommunicator {
     stream: OwnedWriteHalf,
     log_subscribers: Vec<Sender<Arc<LogMessage>>>,
@@ -25,7 +47,7 @@ pub struct MachineCommunicator {
 impl MachineCommunicator {
     pub async fn spawn(
         stream: UnixStream,
-        stop_handler: tokio::sync::oneshot::Sender<()>,
+        stop_handler: tokio::sync::oneshot::Sender<MachineExit>,
     ) -> (Arc<Mutex<MachineCommunicator>>, tokio::task::JoinHandle<()>) {
         let (read, write) = stream.into_split();
 
@@ -38,19 +60,6 @@ impl MachineCommunicator {
         let jh = tokio::spawn(packet_handler(read, handler.clone(), stop_handler));
 
         (handler, jh)
-    }
-
-    async fn handle_packet(&mut self, packet: vmproto::guest::GuestPacket) {
-        match packet {
-            vmproto::guest::GuestPacket::Log(log) => {
-                log::trace!("Received log packet: {:?}", log);
-                self.push_log(log).await;
-            }
-            vmproto::guest::GuestPacket::Exited(exit_code) => {
-                //TODO!!!
-                log::info!("Machine exited with code: {:?}", exit_code);
-            }
-        }
     }
 
     async fn push_log(&mut self, data: LogMessage) {
@@ -109,14 +118,25 @@ impl MachineCommunicator {
 async fn packet_handler(
     mut stream: OwnedReadHalf,
     handler: Arc<Mutex<MachineCommunicator>>,
-    stop_handler: tokio::sync::oneshot::Sender<()>,
+    stop_handler: tokio::sync::oneshot::Sender<MachineExit>,
 ) {
+    let mut exit = MachineExit::Unknown;
     loop {
         match read_from_stream(&mut stream).await {
             Ok(packet) => {
                 log::trace!("Received packet: {:?}", packet);
                 let mut handler = handler.lock().await;
-                handler.handle_packet(packet).await;
+                match packet {
+                    vmproto::guest::GuestPacket::Log(log) => {
+                        log::trace!("Received log packet: {:?}", log);
+                        handler.push_log(log).await;
+                    }
+                    vmproto::guest::GuestPacket::Exited(exit_code) => {
+                        //TODO!!!
+                        log::info!("Machine exited with code: {:?}", exit_code);
+                        exit = MachineExit::from(exit_code);
+                    }
+                }
                 log::trace!("Packet handled");
             }
             Err(_) => {
@@ -126,7 +146,7 @@ async fn packet_handler(
     }
     log::trace!("Packet handler loop exited, shutting down");
     let _ = handler.try_lock().map(|mut h| h.drop_subscribers());
-    let _ = stop_handler.send(());
+    let _ = stop_handler.send(exit);
     log::trace!("Packet handler stopped");
 }
 
@@ -145,6 +165,11 @@ async fn read_from_stream(
         }
     }
     log::trace!("Reading {} bytes from vsock", len);
+
+    if len == 0 || len > vmproto::MAX_PACKET_SIZE {
+        log::debug!("Invalid packet length: {}", len);
+        return Err(());
+    }
 
     let mut buf: Vec<u8> = vec![0; len];
     match stream.read_exact(&mut buf).await {

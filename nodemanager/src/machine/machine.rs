@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::{machine::firecracker, networking::NetworkStack};
+use crate::{
+    machine::{firecracker, vsock::MachineExit},
+    networking::NetworkStack,
+};
 
 use super::{firecracker::JailedCracker, vsock::MachineCommunicator};
 use anyhow::Result;
@@ -40,7 +43,7 @@ impl Machine {
         config: MachineConfig,
         network_stack: NetworkStack,
         overrides: ContainerOverrides,
-    ) -> Result<(Self, tokio::sync::oneshot::Receiver<()>)> {
+    ) -> Result<(Self, tokio::sync::oneshot::Receiver<MachineExit>)> {
         #[derive(Serialize)]
         struct Config {
             image: String,

@@ -15,7 +15,7 @@ fn main() {
     let addr = "[::1]:50051".parse().expect("Unable to parse address");
 
     rt.block_on(async {
-        let (manager, shutdown_tx) = NodeManager::new(config, None)
+        let (manager, shutdown_tx) = NodeManager::new(config, None, None)
             .await
             .expect("Unable to create NodeManager");
 
