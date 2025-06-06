@@ -183,9 +183,9 @@ async fn packet_handler(
                         handler.push_log(MachineLog::VmLog(log)).await;
                     }
                     vmproto::guest::GuestPacket::Exited(exit_code) => {
-                        //TODO!!!
                         log::info!("Machine exited with code: {:?}", exit_code);
                         exit = MachineExit::from(exit_code);
+                        handler.state = None;
                     }
                     vmproto::guest::GuestPacket::VmState((state, timestamp_ms)) => {
                         log::trace!("Received VM state packet: {:?}", state);

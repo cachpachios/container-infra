@@ -103,12 +103,7 @@ fn main() {
         terminal: false,
     };
 
-    comm.lock().unwrap().state_change(
-        InitVmState::PullingContainerImage,
-        Some(format!("Pulling container image: {}", reference)),
-    );
-
-    if let Err(r) = containers::pull_and_prepare_image(reference, &rt_overrides) {
+    if let Err(r) = containers::pull_and_prepare_image(reference, &rt_overrides, comm.clone()) {
         log::error!("Unable to pull and extract container image: {:?}", r);
         comm.lock().unwrap().exit(
             GuestExitCode::FailedToPullContainerImage,

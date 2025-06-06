@@ -15,8 +15,10 @@ pub enum RegistryErrors {
     UnableToParseImageIndex,
     UnableToParseImageManifest,
     UnableToParseImageConfiguration,
+    UnableToConstructRuntimeConfig,
     AuthenticationError,
     IOErr,
+    ExtractIOError,
 }
 
 const SUPPORTED_ARCH: Arch = Arch::Amd64; //TODO: Arm64?
@@ -103,7 +105,7 @@ pub fn pull_and_extract_layer(
     layer: &Descriptor,
     output_folder: &Path,
     auth_token: Option<&str>,
-) -> Result<(), RegistryErrors> {
+) -> Result<usize, RegistryErrors> {
     let blob_url = format!(
         "https://{}/v2/{}/blobs/{}",
         reference.resolve_registry(),
@@ -112,7 +114,9 @@ pub fn pull_and_extract_layer(
     );
 
     let mut blob_resp = get_with_backoff(&blob_url, auth_token)?;
-    extract_layer(&mut blob_resp, &output_folder, layer.media_type())
+    let blob_resp_size = blob_resp.content_length().unwrap_or(0);
+    extract_layer(&mut blob_resp, &output_folder, layer.media_type())?;
+    Ok(blob_resp_size as usize)
 }
 
 fn extract_layer(
@@ -135,9 +139,10 @@ fn extract_layer(
 
     let mut tar = tar::Archive::new(reader);
     tar.set_overwrite(true);
-    tar.unpack(output_folder)
-        .map_err(|_| RegistryErrors::IOErr)?;
-    Ok(())
+    tar.unpack(output_folder).map_err(|e| {
+        log::error!("Unable to extract layer: {}", e);
+        RegistryErrors::ExtractIOError
+    })
 }
 
 pub fn docker_io_oauth(

@@ -1,5 +1,9 @@
+use std::sync::{atomic::AtomicI32, Arc, Mutex};
+
 use oci_spec::{distribution::Reference, runtime::Spec};
 use rt::RuntimeOverrides;
+
+use crate::host::HostCommunication;
 
 pub mod fs;
 pub mod registry;
@@ -8,8 +12,12 @@ pub mod rt;
 pub fn pull_and_prepare_image(
     reference: Reference,
     overrides: &RuntimeOverrides,
+    comm: Arc<Mutex<HostCommunication>>,
 ) -> Result<Spec, registry::RegistryErrors> {
-    log::info!("Pulling container image: {}", reference.whole(),);
+    comm.lock().unwrap().state_change(
+        vmproto::guest::InitVmState::PullingContainerImage,
+        Some(format!("Starting to pull container image.")),
+    );
 
     let mut auth: Option<String> = None;
 
@@ -28,9 +36,16 @@ pub fn pull_and_prepare_image(
     std::fs::create_dir_all(&layers_folder).map_err(|_| registry::RegistryErrors::IOErr)?;
 
     let layer_count = manifest.layers().len();
+    comm.lock().unwrap().log_system_message(format!(
+        "Image manifest fetched. Pulling {} layers... ",
+        layer_count
+    ));
+
     let mut layer_threads = Vec::with_capacity(layer_count);
 
     let mut layer_folders = Vec::with_capacity(layer_count);
+
+    let layer_progress: Arc<AtomicI32> = Arc::new(0.into());
 
     for (i, layer) in manifest.layers().iter().enumerate() {
         let layer = layer.clone();
@@ -41,6 +56,8 @@ pub fn pull_and_prepare_image(
         let auth = auth.clone();
 
         // Spawn a thread to pull the layer
+        let comm_clone = comm.clone();
+        let progress_clone = layer_progress.clone();
         let jh = std::thread::spawn(move || {
             std::fs::create_dir_all(&folder).map_err(|_| registry::RegistryErrors::IOErr)?;
             let r = registry::pull_and_extract_layer(&reference, &layer, &folder, auth.as_deref());
@@ -50,6 +67,14 @@ pub fn pull_and_prepare_image(
                 layer_count,
                 layer.digest()
             );
+            let mut comm_clone_lock = comm_clone.lock().unwrap();
+            let i = progress_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            comm_clone_lock.log_system_message(format!(
+                "Pulled and extracted layer {} of {} - {}",
+                i + 1,
+                layer_count,
+                layer.digest()
+            ));
             r
         });
         layer_threads.push(jh);
@@ -64,7 +89,8 @@ pub fn pull_and_prepare_image(
         .to_file(&folder.join("image_config.json"))
         .expect("Unable to save config");
 
-    let spec = rt::create_runtime_spec(&config, &overrides).expect("Unable to create runtime spec");
+    let spec = rt::create_runtime_spec(&config, &overrides)
+        .map_err(|_| registry::RegistryErrors::UnableToConstructRuntimeConfig)?;
 
     spec.save(&folder.join("config.json"))
         .expect("Unable to save runtime spec");
