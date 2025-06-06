@@ -64,6 +64,34 @@ impl HostCommunication {
         self.write(GuestPacket::Log(LogMessage::system(message)))
             .unwrap();
     }
+
+    pub fn state_change(&mut self, state: vmproto::guest::InitVmState, message: Option<String>) {
+        log::debug!("Sending state change: {:?}", state);
+        self.write_without_flush(GuestPacket::VmState((
+            state,
+            vmproto::guest::get_timestamp_ms(),
+        )))
+        .expect("Failed to write init state change");
+        if let Some(message) = message {
+            self.write_without_flush(GuestPacket::Log(LogMessage::system(message)))
+                .expect("Failed to write log message");
+        }
+        self.flush()
+            .expect("Failed to flush stream after init state change");
+    }
+
+    pub fn exit(&mut self, exit_code: vmproto::guest::GuestExitCode, message: Option<String>) {
+        log::debug!("Sending exit code: {:?}", exit_code);
+        self.write_without_flush(GuestPacket::Exited(exit_code))
+            .expect("Failed to write init state change");
+        if let Some(message) = message {
+            self.write_without_flush(GuestPacket::Log(LogMessage::system(message)))
+                .expect("Failed to write log message");
+        }
+        self.flush()
+            .expect("Failed to flush stream after init state change");
+    }
+
     pub fn clone_stream(&mut self) -> Result<VsockStream, CommErrors> {
         let cloned_stream = self.stream.try_clone().map_err(CommErrors::IoError)?;
         Ok(cloned_stream)

@@ -284,22 +284,12 @@ impl NodeManagerService for NodeManager {
         let (tx, rpc_rx) = mpsc::channel(128);
         tokio::spawn(async move {
             for l in logs {
-                let log_message = LogMessage {
-                    message: l.text.clone(),
-                    timestamp: l.timestamp_ms as i64,
-                    log_type: l.message_type.as_str().to_string(),
-                };
-                if let Err(_) = tx.send(Ok(log_message)).await {
+                if let Err(_) = tx.send(Ok(l.as_proto_log_message())).await {
                     return;
                 }
             }
             while let Some(l) = log_rx.recv().await {
-                let log_message = LogMessage {
-                    message: l.text.clone(),
-                    timestamp: l.timestamp_ms as i64,
-                    log_type: l.message_type.as_str().to_string(),
-                };
-                if let Err(_) = tx.send(Ok(log_message)).await {
+                if let Err(_) = tx.send(Ok(l.as_proto_log_message())).await {
                     return;
                 }
             }
@@ -327,7 +317,8 @@ impl NodeManagerService for NodeManager {
     async fn get_logs(&self, request: Request<InstanceId>) -> Result<Response<AllLogs>, Status> {
         self.validate_auth(request.metadata(), Some(&request.get_ref().id))?;
         let request = request.into_inner();
-        let machines = self.inner.machines.read().await;
+        let machines: tokio::sync::RwLockReadGuard<'_, HashMap<String, Machine>> =
+            self.inner.machines.read().await;
         let machine = match machines.get(&request.id) {
             Some(machine) => machine,
             None => {
@@ -345,11 +336,7 @@ impl NodeManagerService for NodeManager {
                     Status::internal("Failed to get logs")
                 })?
                 .into_iter()
-                .map(|s| LogMessage {
-                    message: s.text.clone(),
-                    timestamp: s.timestamp_ms as i64,
-                    log_type: s.message_type.as_str().to_string(),
-                })
+                .map(|s| s.as_proto_log_message())
                 .collect(),
         }))
     }

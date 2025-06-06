@@ -12,7 +12,7 @@ use tokio::{
         Mutex,
     },
 };
-use vmproto::guest::LogMessage;
+use vmproto::guest::{GuestExitCode, InitVmState, LogMessage};
 
 const MAX_LINES_IN_BUFFER: usize = 256;
 
@@ -24,24 +24,45 @@ pub enum MachineExit {
     FailedToPullContainerImage,
 }
 
-impl From<vmproto::guest::GuestExitCode> for MachineExit {
-    fn from(code: vmproto::guest::GuestExitCode) -> Self {
+pub enum MachineLog {
+    VmLog(LogMessage),
+    State(InitVmState, u64),
+}
+
+impl MachineLog {
+    pub fn as_proto_log_message(&self) -> proto::node::LogMessage {
+        match self {
+            MachineLog::VmLog(s) => proto::node::LogMessage {
+                message: Some(s.text.clone()),
+                timestamp_ms: s.timestamp_ms as i64,
+                log_type: s.message_type.as_str().to_string(),
+                state: None,
+            },
+            MachineLog::State(s, timestamp_ms) => proto::node::LogMessage {
+                timestamp_ms: *timestamp_ms as i64,
+                log_type: "state".to_string(),
+                message: None,
+                state: Some(s.as_str().to_string()),
+            },
+        }
+    }
+}
+
+impl From<GuestExitCode> for MachineExit {
+    fn from(code: GuestExitCode) -> Self {
         match code {
-            vmproto::guest::GuestExitCode::GracefulShutdown => MachineExit::GracefulShutdown,
-            vmproto::guest::GuestExitCode::FailedToPullContainerImage => {
-                MachineExit::FailedToPullContainerImage
-            }
-            vmproto::guest::GuestExitCode::ContainerExited(code) => {
-                MachineExit::ContainerExited(code)
-            }
+            GuestExitCode::GracefulShutdown => MachineExit::GracefulShutdown,
+            GuestExitCode::FailedToPullContainerImage => MachineExit::FailedToPullContainerImage,
+            GuestExitCode::ContainerExited(code) => MachineExit::ContainerExited(code),
         }
     }
 }
 
 pub struct MachineCommunicator {
     stream: OwnedWriteHalf,
-    log_subscribers: Vec<Sender<Arc<LogMessage>>>,
-    log_buffer: CircularBuffer<MAX_LINES_IN_BUFFER, Arc<LogMessage>>,
+    log_subscribers: Vec<Sender<Arc<MachineLog>>>,
+    log_buffer: CircularBuffer<MAX_LINES_IN_BUFFER, Arc<MachineLog>>,
+    state: Option<(InitVmState, u64)>,
 }
 
 impl MachineCommunicator {
@@ -55,6 +76,7 @@ impl MachineCommunicator {
             log_subscribers: Vec::new(),
             log_buffer: CircularBuffer::new(),
             stream: write,
+            state: None,
         }));
 
         let jh = tokio::spawn(packet_handler(read, handler.clone(), stop_handler));
@@ -62,7 +84,7 @@ impl MachineCommunicator {
         (handler, jh)
     }
 
-    async fn push_log(&mut self, data: LogMessage) {
+    async fn push_log(&mut self, data: MachineLog) {
         let data = Arc::from(data);
         self.log_buffer.push_front(data.clone());
         if self.log_subscribers.is_empty() {
@@ -87,14 +109,43 @@ impl MachineCommunicator {
         }
     }
 
-    pub fn subscribe_log(&mut self) -> Receiver<Arc<LogMessage>> {
+    pub fn subscribe_log(&mut self) -> Receiver<Arc<MachineLog>> {
         let (tx, rx) = tokio::sync::mpsc::channel(128);
         self.log_subscribers.push(tx);
         rx
     }
 
-    pub fn clone_buffer(&self) -> Vec<Arc<LogMessage>> {
-        self.log_buffer.iter().rev().cloned().collect()
+    pub fn clone_buffer_with_state(&self) -> Vec<Arc<MachineLog>> {
+        let should_chain_last_state = self
+            .state
+            .map(|(s, t)| {
+                self.log_buffer
+                    .iter()
+                    .find(|log| match &***log {
+                        MachineLog::State(state, timestamp) => *state == s && *timestamp == t,
+                        _ => false,
+                    })
+                    .is_some()
+            })
+            .unwrap_or(false);
+        self.log_buffer
+            .iter()
+            .rev()
+            .cloned()
+            .chain(
+                self.state
+                    .as_ref()
+                    .and_then(|(s, ts)| {
+                        if should_chain_last_state {
+                            None
+                        } else {
+                            Some(vec![Arc::new(MachineLog::State(*s, *ts))])
+                        }
+                    })
+                    .into_iter()
+                    .flatten(),
+            )
+            .collect()
     }
 
     fn drop_subscribers(&mut self) {
@@ -129,12 +180,19 @@ async fn packet_handler(
                 match packet {
                     vmproto::guest::GuestPacket::Log(log) => {
                         log::trace!("Received log packet: {:?}", log);
-                        handler.push_log(log).await;
+                        handler.push_log(MachineLog::VmLog(log)).await;
                     }
                     vmproto::guest::GuestPacket::Exited(exit_code) => {
                         //TODO!!!
                         log::info!("Machine exited with code: {:?}", exit_code);
                         exit = MachineExit::from(exit_code);
+                    }
+                    vmproto::guest::GuestPacket::VmState((state, timestamp_ms)) => {
+                        log::trace!("Received VM state packet: {:?}", state);
+                        handler.state = Some((state, timestamp_ms));
+                        handler
+                            .push_log(MachineLog::State(state, timestamp_ms))
+                            .await;
                     }
                 }
                 log::trace!("Packet handled");

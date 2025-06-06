@@ -1,7 +1,10 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::{
-    machine::{firecracker, vsock::MachineExit},
+    machine::{
+        firecracker,
+        vsock::{MachineExit, MachineLog},
+    },
     networking::NetworkStack,
 };
 
@@ -10,7 +13,6 @@ use anyhow::Result;
 use log::trace;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use vmproto::guest::LogMessage;
 
 pub struct Machine {
     vm: JailedCracker,
@@ -187,23 +189,23 @@ impl Machine {
     pub async fn get_and_subscribe_to_logs(
         &self,
     ) -> Result<(
-        Vec<Arc<LogMessage>>,
-        tokio::sync::mpsc::Receiver<Arc<LogMessage>>,
+        Vec<Arc<MachineLog>>,
+        tokio::sync::mpsc::Receiver<Arc<MachineLog>>,
     )> {
         let comm = self
             .comm
             .as_ref()
             .ok_or(anyhow::anyhow!("Communication never initialized"))?;
         let mut handler = comm.0.lock().await;
-        Ok((handler.clone_buffer(), handler.subscribe_log()))
+        Ok((handler.clone_buffer_with_state(), handler.subscribe_log()))
     }
 
-    pub async fn get_logs(&self) -> Result<Vec<Arc<LogMessage>>> {
+    pub async fn get_logs(&self) -> Result<Vec<Arc<MachineLog>>> {
         let comm = self
             .comm
             .as_ref()
             .ok_or(anyhow::anyhow!("Communication never initialized"))?;
         let handler = comm.0.lock().await;
-        Ok(handler.clone_buffer())
+        Ok(handler.clone_buffer_with_state())
     }
 }

@@ -8,6 +8,23 @@ pub enum GuestExitCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum InitVmState {
+    Online,
+    PullingContainerImage,
+    ExecutingContainer,
+}
+
+impl InitVmState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InitVmState::Online => "online",
+            InitVmState::PullingContainerImage => "pulling_container_image",
+            InitVmState::ExecutingContainer => "executing_container",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum LogMessageType {
     System, // System messages, e.g., startup logs
     Stdout, // Standard output from the container
@@ -31,15 +48,18 @@ pub struct LogMessage {
     pub message_type: LogMessageType,
 }
 
+pub fn get_timestamp_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 impl LogMessage {
     pub fn new(text: String, message_type: LogMessageType) -> Self {
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
         LogMessage {
             text,
-            timestamp_ms,
+            timestamp_ms: get_timestamp_ms(),
             message_type,
         }
     }
@@ -60,8 +80,9 @@ impl LogMessage {
 // Guest -> Host
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum GuestPacket {
-    Exited(GuestExitCode),
     Log(LogMessage),
+    VmState((InitVmState, u64)), // (state, timestamp_ms)
+    Exited(GuestExitCode),
 }
 
 pub fn serialize_guest_packet(packet: &GuestPacket) -> Vec<u8> {

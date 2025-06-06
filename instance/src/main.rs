@@ -11,7 +11,7 @@ use host::read_packet;
 use libc::{reboot, sync};
 use oci_spec::distribution::Reference;
 use vmproto::{
-    guest::{GuestExitCode, GuestPacket, LogMessageType},
+    guest::{GuestExitCode, InitVmState, LogMessageType},
     host::HostPacket,
 };
 
@@ -25,7 +25,7 @@ fn main() {
     simple_logger::init_with_level(if cfg!(debug_assertions) {
         log::Level::Debug
     } else {
-        log::Level::Warn
+        log::Level::Error
     })
     .expect("Failed to initialize logger");
 
@@ -58,9 +58,10 @@ fn main() {
             .expect("Unable to connect to host communication channel"),
     ));
 
-    comm.lock()
-        .unwrap()
-        .log_system_message(format!("Instance v. {}", env!("CARGO_PKG_VERSION")));
+    comm.lock().unwrap().state_change(
+        InitVmState::Online,
+        Some(format!("Instance v. {}", env!("CARGO_PKG_VERSION"))),
+    );
 
     let (exit_tx, exit_rx) = std::sync::mpsc::channel();
 
@@ -70,27 +71,15 @@ fn main() {
         .unwrap()
         .clone_stream()
         .expect("Failed to clone stream");
-    let shutdown_tx = exit_tx.clone();
-    let container_running_clone = container_running.clone();
-    let comm_clone = comm.clone();
+    let host_requested_shutdown_tx = exit_tx.clone();
     std::thread::spawn(move || loop {
         let packet = read_packet(&mut read_stream).expect("Failed to read packet from host");
         match packet {
             HostPacket::Shutdown => {
                 log::info!("Received shutdown command from host");
-                if *container_running_clone.lock().unwrap() {
-                    shutdown_tx
-                        .send(GuestExitCode::GracefulShutdown)
-                        .expect("Failed to send shutdown exit code");
-                } else {
-                    log::info!("No container is running, shutting down immediately");
-                    let mut comm = comm_clone.lock().unwrap();
-                    comm.log_system_message(
-                        "Received graceful shutdown command... Shutting down instance.".to_string(),
-                    );
-                    let _ = comm.write(GuestPacket::Exited(GuestExitCode::GracefulShutdown));
-                    shutdown();
-                }
+                host_requested_shutdown_tx
+                    .send(GuestExitCode::GracefulShutdown)
+                    .expect("Failed to send shutdown exit code");
             }
         }
     });
@@ -99,6 +88,10 @@ fn main() {
         Ok(reference) => reference,
         Err(e) => {
             log::error!("Unable to parse container image reference: {}", e);
+            comm.lock().unwrap().exit(
+                GuestExitCode::FailedToPullContainerImage,
+                Some(format!("Failed to parse container image reference: {}", e)),
+            );
             shutdown();
             return;
         }
@@ -110,21 +103,20 @@ fn main() {
         terminal: false,
     };
 
-    comm.lock()
-        .unwrap()
-        .log_system_message(format!("Pulling container image: {}", reference));
+    comm.lock().unwrap().state_change(
+        InitVmState::PullingContainerImage,
+        Some(format!("Pulling container image: {}", reference)),
+    );
 
     if let Err(r) = containers::pull_and_prepare_image(reference, &rt_overrides) {
         log::error!("Unable to pull and extract container image: {:?}", r);
-        comm.lock()
-            .unwrap()
-            .log_system_message(format!("Failed to pull container image: {:?}", r));
-        comm.lock()
-            .unwrap()
-            .write(GuestPacket::Exited(
-                GuestExitCode::FailedToPullContainerImage,
-            ))
-            .expect("Failed to write exit status to host");
+        comm.lock().unwrap().exit(
+            GuestExitCode::FailedToPullContainerImage,
+            Some(format!(
+                "Unable to pull and extract container image: {:?}",
+                r
+            )),
+        );
         shutdown();
         return;
     }
@@ -133,9 +125,10 @@ fn main() {
     log::debug!("Runtime overrides: {:?}", rt_overrides);
     flush_buffers();
 
-    comm.lock()
-        .unwrap()
-        .log_system_message("Executing container...".to_string());
+    comm.lock().unwrap().state_change(
+        InitVmState::ExecutingContainer,
+        Some("Executing container...".to_string()),
+    );
 
     *container_running.lock().unwrap() = true;
 
@@ -200,10 +193,7 @@ fn main() {
     let _ = stdout_thread.join();
     let _ = stderr_thread.join();
 
-    comm.lock()
-        .unwrap()
-        .write(GuestPacket::Exited(res))
-        .expect("Failed to write exit status to host");
+    comm.lock().unwrap().exit(res, None);
 
     log::info!("Container exited with status: {:?}", res);
     shutdown();
