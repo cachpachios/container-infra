@@ -158,8 +158,15 @@ fn main() {
         host::spawn_pipe_to_log(comm.clone(), Box::new(stderr), LogMessageType::Stderr);
 
     let container_exit_tx = exit_tx.clone();
+    let comm_clone = comm.clone();
     std::thread::spawn(move || {
         let res = out.wait().expect("Failed to wait for container process");
+        comm_clone.lock().unwrap().log_system_message(format!(
+            "Container exited with code: {}",
+            res.code()
+                .map(|c| c.to_string())
+                .unwrap_or("unknown".to_string())
+        ));
         container_exit_tx.send(GuestExitCode::ContainerExited(res.code().unwrap_or(9999)))
     });
 
