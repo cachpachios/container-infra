@@ -107,7 +107,7 @@ pub fn pull_and_extract_layer(
         layer.digest()
     );
 
-    let mut blob_resp = get(&blob_url, auth_token).map_err(|_| RegistryErrors::NetworkError)?;
+    let mut blob_resp = get(&blob_url, auth_token)?;
     extract_layer(&mut blob_resp, &output_folder, layer.media_type())
 }
 
@@ -169,7 +169,10 @@ fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Respons
     if let Some(token) = auth_token {
         request = request.bearer_auth(token);
     }
-    let resp = request.send().map_err(|_| RegistryErrors::NetworkError)?;
+    let resp = request.send().map_err(|e| {
+        log::error!("Network error while accessing {}: {}", url, e);
+        RegistryErrors::NetworkError
+    })?;
     if resp.status().is_success() {
         Ok(resp)
     } else {
