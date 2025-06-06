@@ -97,6 +97,7 @@ impl JailedCracker {
         firecracker_bin: &Path,
         uid_offset: u16,
         mmds_json: Option<&str>,
+        null_pipe_stdio: bool,
     ) -> Result<Self> {
         let uuid: String = Uuid::new_v4().to_string();
         debug!("Starting jailed firecracker instance with id {}", uuid);
@@ -112,8 +113,13 @@ impl JailedCracker {
         cmd.arg("--");
         cmd.arg("--level").arg("error");
 
-        cmd.stdout(Stdio::null());
-        cmd.stderr(Stdio::null());
+        if !null_pipe_stdio {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+        } else {
+            cmd.stdout(Stdio::null());
+            cmd.stderr(Stdio::null());
+        }
         cmd.stdin(Stdio::null());
 
         let fc_bin = firecracker_bin

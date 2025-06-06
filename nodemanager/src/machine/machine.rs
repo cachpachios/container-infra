@@ -72,18 +72,36 @@ impl Machine {
 
         let metadata = serde_json::to_string(&Latest { latest: metadata })?;
 
+        // DEBUG_MACHINE_OUT flag is set
+        let debug_machine_out = std::env::var("DEBUG_MACHINE_OUT").is_ok();
+
+        if debug_machine_out {
+            log::warn!(
+                "Debugging machine output enabled, this should NEVER be used in production!"
+            );
+        } else {
+            log::debug!("Debugging machine output disabled");
+        }
+
         let mut vm = firecracker::JailedCracker::spawn(
             &fc_config.jailer_binary,
             &fc_config.firecracker_binary,
             0,
             Some(&metadata),
+            !debug_machine_out,
         )
         .await?;
 
         vm.set_machine_config(config.vcpu_count, config.mem_size_mb)
             .await?;
+
+        let console_arg = match debug_machine_out {
+            true => "console=ttyS0",
+            false => "8250.nr_uarts=0",
+        };
         let boot_args: String = format!(
-            "8250.nr_uarts=0 quiet loglevel=1 reboot=k panic=-1 pci=off ip={}::{}:{}::eth0:off",
+            "{} quiet loglevel=1 reboot=k panic=-1 pci=off ip={}::{}:{}::eth0:off",
+            console_arg,
             network_stack.ipv4_addr(),
             network_stack.gateway(),
             network_stack.subnet_mask(),
