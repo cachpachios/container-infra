@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use backoff::ExponentialBackoff;
 use oci_spec::image::{Arch, Descriptor, ImageConfiguration, ImageManifest, MediaType, Os};
 use oci_spec::{distribution::Reference, image::ImageIndex};
 use reqwest::blocking::Client;
@@ -31,10 +32,13 @@ pub fn get_manifest_and_config(
         reference.tag().unwrap_or("latest"),
     );
     log::debug!("Pulling index from {}", index_url);
-    let index_data: serde_json::Value = get(&index_url, auth_token)?.json().map_err(|e| {
-        log::debug!("Image index response is not JSON: {:?}", e);
-        RegistryErrors::UnableToParseImageIndex
-    })?;
+    let index_data: serde_json::Value =
+        get_with_backoff(&index_url, auth_token)?
+            .json()
+            .map_err(|e| {
+                log::debug!("Image index response is not JSON: {:?}", e);
+                RegistryErrors::UnableToParseImageIndex
+            })?;
 
     let schema_version = index_data
         .get("schemaVersion")
@@ -107,7 +111,7 @@ pub fn pull_and_extract_layer(
         layer.digest()
     );
 
-    let mut blob_resp = get(&blob_url, auth_token)?;
+    let mut blob_resp = get_with_backoff(&blob_url, auth_token)?;
     extract_layer(&mut blob_resp, &output_folder, layer.media_type())
 }
 
@@ -161,6 +165,28 @@ pub fn docker_io_oauth(
     log::debug!("Obtained docker.io token: {}", resp.token);
 
     Ok(resp.token)
+}
+
+fn get_with_backoff(
+    url: &str,
+    auth_token: Option<&str>,
+) -> Result<reqwest::blocking::Response, RegistryErrors> {
+    let backoff = ExponentialBackoff {
+        initial_interval: std::time::Duration::from_millis(100),
+        max_interval: std::time::Duration::from_secs(2),
+        max_elapsed_time: Some(std::time::Duration::from_secs(5)),
+        multiplier: 2.0,
+        ..Default::default()
+    };
+    let op = || {
+        get(url, auth_token).map_err(|e| match e {
+            RegistryErrors::NetworkError => backoff::Error::transient(e),
+            _ => backoff::Error::permanent(e),
+        })
+    };
+    backoff::retry(backoff, op).map_err(|e| match e {
+        backoff::Error::Permanent(inner) | backoff::Error::Transient { err: inner, .. } => inner,
+    })
 }
 
 fn get(url: &str, auth_token: Option<&str>) -> Result<reqwest::blocking::Response, RegistryErrors> {

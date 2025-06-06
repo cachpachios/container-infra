@@ -16,3 +16,4 @@ simple_logger = "5.0.0"
 tar = "0.4.44"
 vsock = "0.5.1"
 vmproto = { path = "../vmproto"}
+backoff = "0.4.0"
